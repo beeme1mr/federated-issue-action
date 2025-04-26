@@ -35,9 +35,6 @@ export async function createChildIssue(
   client: Octokit,
   parentIssue: IssueDetails,
   targetRepo: Repository,
-  parentRepoName: string,
-  parentIssueNumber: number,
-  parentIssueUrl: string
 ): Promise<IssueReference> {
   // Create the child issue
   const childIssueResponse = await client.rest.issues.create({
@@ -65,7 +62,7 @@ export async function linkIssueAsSubItem(
   childNodeId: string
 ): Promise<unknown> {
   const mutation = `
-    mutation addSubIssue($parentId: ID!, $childId: ID!) {
+    mutation AddSubIssue($parentId: ID!, $childId: ID!) {
       addSubIssue(input: {
         issueId: $parentId,
         subIssueId: $childId
@@ -89,15 +86,13 @@ export async function linkIssueAsSubItem(
  */
 export async function getChildIssues(
   client: Octokit,
-  owner: string,
-  repo: string,
-  issueNumber: number
+  parentNodeId: string,
 ): Promise<IssueReference[]> {
   const query = `
-    query GetSubItems($owner: String!, $repo: String!, $number: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $number) {
-          trackedInIssues(first: 100) {
+    query SubIssues($parentId: ID!) {
+      node(id: $parentId) {
+        ... on Issue {
+          subIssues(first: 50) {
             nodes {
               repository {
                 name
@@ -115,9 +110,7 @@ export async function getChildIssues(
   `;
   
   const response: any = await client.graphql(query, {
-    owner,
-    repo,
-    number: issueNumber,
+    parentNodeId,
     headers: {
       "GraphQL-Features": "sub_issues"
     }
@@ -144,9 +137,6 @@ export async function updateChildIssue(
   client: Octokit,
   childIssue: IssueReference,
   parentIssue: IssueDetails,
-  parentRepoName: string,
-  parentIssueNumber: number,
-  parentIssueUrl: string
 ): Promise<unknown> {
   return await client.rest.issues.update({
     owner: childIssue.owner,

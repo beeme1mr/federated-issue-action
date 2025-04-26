@@ -34579,19 +34579,21 @@ async function run() {
             labels: issue.labels?.map((label) => label.name) || [],
             isOpen: issue.state === 'open',
         };
+        const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(octokit, owner, repo, issueNumber);
+        core.info(`Parent issue node ID: ${parentIssueNodeId}`);
         switch (action) {
             case 'labeled':
                 console.log('Issue opened:', issueDetails);
-                handleIssueOpened(octokit, owner, repo, issueNumber, issueDetails, "", repos);
+                handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
                 break;
             case 'edited':
                 console.log('Issue edited:', issueDetails);
-                handleIssueEdited(octokit, owner, repo, issueNumber, issueDetails, "");
+                handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
                 break;
             case 'closed':
             case 'unlabeled':
                 console.log('Issue closed/reopened:', issueDetails);
-                handleIssueStatusChanged(octokit, owner, repo, issueNumber);
+                handleIssueStatusChanged(octokit, parentIssueNodeId);
                 break;
             default:
                 core.info(`Action ${action} not handled`);
@@ -34669,17 +34671,13 @@ async function addNoPermissionComment(client, owner, repo, issueNumber) {
         body: "⚠️ No permissions ⚠️\nYou don't have permission to create parent issues.",
     });
 }
-/**
- * Handles the 'opened' event by creating child issues in SDK repositories
- */
-async function handleIssueOpened(client, owner, parentRepo, issueNumber, issueDetails, parentIssueUrl, childRepos) {
-    const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(client, owner, parentRepo, issueNumber);
+async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childRepos) {
     core.info(`Parent issue node ID: ${parentIssueNodeId}`);
     for (const repo of childRepos) {
         console.log('Creating child issue in:', repo);
         try {
             core.info(`Creating child issue in ${repo.name}`);
-            const childIssue = await (0, issue_operations_1.createChildIssue)(client, issueDetails, repo, parentRepo, issueNumber, parentIssueUrl);
+            const childIssue = await (0, issue_operations_1.createChildIssue)(client, issueDetails, repo);
             // Get the child issue node ID for linking
             const childNodeId = childIssue.nodeId ||
                 await (0, issue_operations_1.getIssueNodeId)(client, childIssue.owner, childIssue.repo, childIssue.number);
@@ -34695,15 +34693,15 @@ async function handleIssueOpened(client, owner, parentRepo, issueNumber, issueDe
 /**
  * Handles the 'edited' event by updating child issues
  */
-async function handleIssueEdited(client, owner, repo, issueNumber, issueDetails, parentIssueUrl) {
+async function handleIssueEdited(client, parentIssueNodeId, issueDetails) {
     // Get all child issues
-    const childIssues = await (0, issue_operations_1.getChildIssues)(client, owner, repo, issueNumber);
+    const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
     core.info(`Found ${childIssues.length} child issues`);
     // Update each child issue
     for (const childIssue of childIssues) {
         try {
             core.info(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
-            await (0, issue_operations_1.updateChildIssue)(client, childIssue, issueDetails, repo, issueNumber, parentIssueUrl);
+            await (0, issue_operations_1.updateChildIssue)(client, childIssue, issueDetails);
             core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
         }
         catch (error) {
@@ -34714,9 +34712,9 @@ async function handleIssueEdited(client, owner, repo, issueNumber, issueDetails,
 /**
  * Handles the 'closed' or 'reopened' events by updating child issue statuses
  */
-async function handleIssueStatusChanged(client, owner, repo, issueNumber) {
+async function handleIssueStatusChanged(client, parentIssueNodeId) {
     // Get all child issues
-    const childIssues = await (0, issue_operations_1.getChildIssues)(client, owner, repo, issueNumber);
+    const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
     core.info(`Found ${childIssues.length} child issues`);
     // Update each child issue status
     for (const childIssue of childIssues) {
@@ -34770,7 +34768,7 @@ async function getIssueNodeId(client, owner, repo, issueNumber) {
 /**
  * Creates a child issue in a target repository
  */
-async function createChildIssue(client, parentIssue, targetRepo, parentRepoName, parentIssueNumber, parentIssueUrl) {
+async function createChildIssue(client, parentIssue, targetRepo) {
     // Create the child issue
     const childIssueResponse = await client.rest.issues.create({
         owner: targetRepo.owner,
@@ -34791,7 +34789,7 @@ async function createChildIssue(client, parentIssue, targetRepo, parentRepoName,
  */
 async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
     const mutation = `
-    mutation addSubIssue($parentId: ID!, $childId: ID!) {
+    mutation AddSubIssue($parentId: ID!, $childId: ID!) {
       addSubIssue(input: {
         issueId: $parentId,
         subIssueId: $childId
@@ -34811,12 +34809,12 @@ async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
 /**
  * Gets all child issues linked to a parent issue
  */
-async function getChildIssues(client, owner, repo, issueNumber) {
+async function getChildIssues(client, parentNodeId) {
     const query = `
-    query GetSubItems($owner: String!, $repo: String!, $number: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $number) {
-          trackedInIssues(first: 100) {
+    query SubIssues($parentId: ID!) {
+      node(id: $parentId) {
+        ... on Issue {
+          subIssues(first: 50) {
             nodes {
               repository {
                 name
@@ -34833,9 +34831,7 @@ async function getChildIssues(client, owner, repo, issueNumber) {
     }
   `;
     const response = await client.graphql(query, {
-        owner,
-        repo,
-        number: issueNumber,
+        parentNodeId,
         headers: {
             "GraphQL-Features": "sub_issues"
         }
@@ -34854,7 +34850,7 @@ async function getChildIssues(client, owner, repo, issueNumber) {
 /**
  * Updates a child issue with new content from the parent issue
  */
-async function updateChildIssue(client, childIssue, parentIssue, parentRepoName, parentIssueNumber, parentIssueUrl) {
+async function updateChildIssue(client, childIssue, parentIssue) {
     return await client.rest.issues.update({
         owner: childIssue.owner,
         repo: childIssue.repo,

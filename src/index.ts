@@ -76,21 +76,24 @@ async function run(): Promise<void> {
       isOpen: issue.state === 'open',
     }
 
+    const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
+    core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+
     switch (action) {
       case 'labeled':
         console.log('Issue opened:', issueDetails);
-        handleIssueOpened(octokit, owner, repo, issueNumber, issueDetails, "", repos);
+        handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
         break;
 
       case 'edited':
         console.log('Issue edited:', issueDetails);
-        handleIssueEdited(octokit, owner, repo, issueNumber, issueDetails, "");
+        handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
         break;
 
       case 'closed':
       case 'unlabeled':
         console.log('Issue closed/reopened:', issueDetails);
-        handleIssueStatusChanged(octokit, owner, repo, issueNumber);
+        handleIssueStatusChanged(octokit, parentIssueNodeId);
         break;
 
       default:
@@ -192,20 +195,12 @@ async function addNoPermissionComment(
   });
 }
 
-/**
- * Handles the 'opened' event by creating child issues in SDK repositories
- */
 async function handleIssueOpened(
   client: Octokit,
-  owner: string,
-  parentRepo: string,
-  issueNumber: number,
+  parentIssueNodeId: string,
   issueDetails: IssueDetails,
-  parentIssueUrl: string,
   childRepos: Repository[]
 ): Promise<void> {
-  const parentIssueNodeId = await getIssueNodeId(client, owner, parentRepo, issueNumber);
-
   core.info(`Parent issue node ID: ${parentIssueNodeId}`);
 
   for (const repo of childRepos) {
@@ -217,9 +212,6 @@ async function handleIssueOpened(
         client,
         issueDetails,
         repo,
-        parentRepo,
-        issueNumber,
-        parentIssueUrl
       );
 
       // Get the child issue node ID for linking
@@ -241,14 +233,11 @@ async function handleIssueOpened(
  */
 async function handleIssueEdited(
   client: Octokit,
-  owner: string,
-  repo: string,
-  issueNumber: number,
+  parentIssueNodeId: string,
   issueDetails: IssueDetails,
-  parentIssueUrl: string
 ): Promise<void> {
   // Get all child issues
-  const childIssues = await getChildIssues(client, owner, repo, issueNumber);
+  const childIssues = await getChildIssues(client, parentIssueNodeId);
   core.info(`Found ${childIssues.length} child issues`);
 
   // Update each child issue
@@ -260,9 +249,6 @@ async function handleIssueEdited(
         client,
         childIssue,
         issueDetails,
-        repo,
-        issueNumber,
-        parentIssueUrl
       );
 
       core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
@@ -276,13 +262,11 @@ async function handleIssueEdited(
  * Handles the 'closed' or 'reopened' events by updating child issue statuses
  */
 async function handleIssueStatusChanged(
-  client: any,
-  owner: string,
-  repo: string,
-  issueNumber: number,
+  client: Octokit,
+  parentIssueNodeId: string,
 ): Promise<void> {
   // Get all child issues
-  const childIssues = await getChildIssues(client, owner, repo, issueNumber);
+  const childIssues = await getChildIssues(client, parentIssueNodeId);
   core.info(`Found ${childIssues.length} child issues`);
 
   // Update each child issue status
