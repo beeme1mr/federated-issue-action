@@ -34793,17 +34793,10 @@ async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
     const mutation = `
     mutation addSubIssue($parentId: ID!, $childId: ID!) {
       addSubIssue(input: {
-        subItemId: $childId,
-        parentId: $parentId,
+        issueId: $parentId,
+        subIssueId: $childId
       }) {
-        issue {
-          title
-          id
-        }
-        subIssue {
-          title
-          id
-        }
+        clientMutationId
       }
     }
   `;
