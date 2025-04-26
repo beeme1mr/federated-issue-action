@@ -34788,6 +34788,13 @@ async function createChildIssue(client, parentIssue, targetRepo) {
  * Links a child issue to a parent issue using the GitHub GraphQL API
  */
 async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
+    // Validate parameters to prevent GraphQL errors
+    if (!parentNodeId || typeof parentNodeId !== 'string') {
+        throw new Error(`Invalid parent issue ID: ${parentNodeId}`);
+    }
+    if (!childNodeId || typeof childNodeId !== 'string') {
+        throw new Error(`Invalid child issue ID: ${childNodeId}`);
+    }
     const mutation = `
     mutation AddSubIssue($parentId: ID!, $childId: ID!) {
       addSubIssue(input: {
@@ -34798,6 +34805,7 @@ async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
       }
     }
   `;
+    console.log(`Linking issues with parent ID: ${parentNodeId} and child ID: ${childNodeId}`);
     return await client.graphql(mutation, {
         parentId: parentNodeId,
         childId: childNodeId,
@@ -34810,6 +34818,10 @@ async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
  * Gets all child issues linked to a parent issue
  */
 async function getChildIssues(client, parentNodeId) {
+    // Validate the parameter
+    if (!parentNodeId || typeof parentNodeId !== 'string') {
+        throw new Error(`Invalid parent issue ID: ${parentNodeId}`);
+    }
     const query = `
     query SubIssues($parentId: ID!) {
       node(id: $parentId) {
@@ -34831,7 +34843,7 @@ async function getChildIssues(client, parentNodeId) {
     }
   `;
     const response = await client.graphql(query, {
-        parentNodeId,
+        parentId: parentNodeId,
         headers: {
             "GraphQL-Features": "sub_issues"
         }

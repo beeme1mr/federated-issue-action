@@ -61,6 +61,15 @@ export async function linkIssueAsSubItem(
   parentNodeId: string,
   childNodeId: string
 ): Promise<unknown> {
+  // Validate parameters to prevent GraphQL errors
+  if (!parentNodeId || typeof parentNodeId !== 'string') {
+    throw new Error(`Invalid parent issue ID: ${parentNodeId}`);
+  }
+  
+  if (!childNodeId || typeof childNodeId !== 'string') {
+    throw new Error(`Invalid child issue ID: ${childNodeId}`);
+  }
+  
   const mutation = `
     mutation AddSubIssue($parentId: ID!, $childId: ID!) {
       addSubIssue(input: {
@@ -71,6 +80,8 @@ export async function linkIssueAsSubItem(
       }
     }
   `;
+  
+  console.log(`Linking issues with parent ID: ${parentNodeId} and child ID: ${childNodeId}`);
   
   return await client.graphql(mutation, {
     parentId: parentNodeId,
@@ -88,6 +99,11 @@ export async function getChildIssues(
   client: Octokit,
   parentNodeId: string,
 ): Promise<IssueReference[]> {
+  // Validate the parameter
+  if (!parentNodeId || typeof parentNodeId !== 'string') {
+    throw new Error(`Invalid parent issue ID: ${parentNodeId}`);
+  }
+
   const query = `
     query SubIssues($parentId: ID!) {
       node(id: $parentId) {
@@ -110,7 +126,7 @@ export async function getChildIssues(
   `;
   
   const response: any = await client.graphql(query, {
-    parentNodeId,
+    parentId: parentNodeId,
     headers: {
       "GraphQL-Features": "sub_issues"
     }
