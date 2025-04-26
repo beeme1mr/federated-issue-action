@@ -34848,6 +34848,7 @@ async function getChildIssues(client, parentNodeId) {
             "GraphQL-Features": "sub_issues"
         }
     });
+    console.log(JSON.stringify(response, null, 2));
     const childIssues = [];
     for (const node of response.repository.issue.trackedInIssues.nodes) {
         childIssues.push({

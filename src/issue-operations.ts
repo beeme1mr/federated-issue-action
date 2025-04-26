@@ -131,6 +131,8 @@ export async function getChildIssues(
       "GraphQL-Features": "sub_issues"
     }
   });
+
+  console.log(JSON.stringify(response, null, 2));
   
   const childIssues: IssueReference[] = [];
   
