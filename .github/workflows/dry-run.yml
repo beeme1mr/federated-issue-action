@@ -1,0 +1,14 @@
+name: "Dry Run Federated Issue Management"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Run dry run
+        run: node dist/index.js --dry-run
