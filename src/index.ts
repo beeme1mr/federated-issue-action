@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { configSchema } from './config';
 
 /**
  * Main entry point for the SDK issue synchronization action
@@ -66,6 +67,9 @@ async function getConfig(
     
     if("content" in response.data) {
       console.log('Configuration file found:', response.data);
+      const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
+
+      return configSchema.parse(JSON.parse(content));
    }
    throw new Error('Configuration file not found or invalid');
   } catch (error) {
