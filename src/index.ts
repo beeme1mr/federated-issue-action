@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import { getOctokit, context } from '@actions/github';
 import { Config, configSchema } from './config';
+import { discoverRepositories } from './repo-discovery';
 
 type Octokit = ReturnType<typeof getOctokit>;
 
@@ -51,6 +52,14 @@ async function run(): Promise<void> {
     if (!hasPermission) {
       core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
       await addNoPermissionComment(octokit, owner, repo, issueNumber);
+      return;
+    }
+
+    const repos = await discoverRepositories(octokit, config, owner);
+
+    console.log('Discovered repositories:', repos);
+    if (repos.length === 0) {
+      core.warning('No target repositories found for creating child issues');
       return;
     }
 

@@ -9,11 +9,23 @@
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.configSchema = void 0;
 const zod_1 = __nccwpck_require__(2558);
+const targetRepositorySelectors = zod_1.z.discriminatedUnion("method", [
+    zod_1.z.object({
+        method: zod_1.z.literal("name-pattern"),
+        identifier: zod_1.z.string(),
+        patternType: zod_1.z.enum(['starts-with', 'contains', 'ends-with']).default('contains'),
+    }),
+    zod_1.z.object({
+        method: zod_1.z.literal("explicit"),
+        repositories: zod_1.z.array(zod_1.z.string()),
+    }),
+]);
 exports.configSchema = zod_1.z.object({
     allowed: zod_1.z.object({
         users: zod_1.z.array(zod_1.z.string()).default([]),
         teams: zod_1.z.array(zod_1.z.string()).default([]),
-    }).default({}),
+    }).default({}).describe('List of users and teams allowed to create parent issues'),
+    targetRepositorySelectors: zod_1.z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
 });
 
 
@@ -61,6 +73,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(8385));
 const github_1 = __nccwpck_require__(2485);
 const config_1 = __nccwpck_require__(8959);
+const repo_discovery_1 = __nccwpck_require__(1982);
 /**
  * Main entry point for the SDK issue synchronization action
  */
@@ -95,6 +108,12 @@ async function run() {
         if (!hasPermission) {
             core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
             await addNoPermissionComment(octokit, owner, repo, issueNumber);
+            return;
+        }
+        const repos = await (0, repo_discovery_1.discoverRepositories)(octokit, config, owner);
+        console.log('Discovered repositories:', repos);
+        if (repos.length === 0) {
+            core.warning('No target repositories found for creating child issues');
             return;
         }
         // const { client, repo, action, issueNumber } = context;
@@ -194,6 +213,93 @@ async function addNoPermissionComment(client, owner, repo, issueNumber) {
     });
 }
 run();
+
+
+/***/ }),
+
+/***/ 1982:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.discoverRepositories = discoverRepositories;
+/**
+ * Discovers repositories where child issues will be created based on configured selectors
+ */
+async function discoverRepositories(client, config, owner) {
+    const repoMap = new Map();
+    // Process each repository selector
+    for (const selector of config.targetRepositorySelectors) {
+        const repos = await getRepositoriesForSelector(client, selector, owner);
+        // Add to map using repo name as key to avoid duplicates
+        for (const repo of repos) {
+            repoMap.set(repo.name, repo);
+        }
+    }
+    return Array.from(repoMap.values());
+}
+/**
+ * Gets repositories for a single selector
+ */
+async function getRepositoriesForSelector(client, selector, owner) {
+    switch (selector.method) {
+        case 'name-pattern':
+            return await discoverByNamePattern(client, owner, selector.patternType, selector.identifier);
+        case 'explicit':
+            return getExplicitRepositories(owner, selector.repositories || []);
+        default:
+            throw new Error(`Unsupported selector type: ${selector.type}`);
+    }
+}
+/**
+ * Discovers repositories by name pattern matching with different pattern types
+ */
+async function discoverByNamePattern(client, owner, patternType, pattern) {
+    const repos = [];
+    // Get all repositories in the organization
+    const repositories = await client.paginate(client.rest.repos.listForOrg, {
+        org: owner,
+        per_page: 100,
+    });
+    for (const repo of repositories) {
+        let isMatch = false;
+        switch (patternType) {
+            case 'starts-with':
+                isMatch = repo.name.startsWith(pattern);
+                break;
+            case 'contains':
+                isMatch = repo.name.includes(pattern);
+                break;
+            case 'ends-with':
+                isMatch = repo.name.endsWith(pattern);
+                break;
+            default:
+                isMatch = repo.name.includes(pattern); // Default to 'contains'
+        }
+        if (isMatch) {
+            repos.push({
+                owner,
+                name: repo.name,
+                nodeId: repo.node_id
+            });
+        }
+    }
+    return repos;
+}
+/**
+ * Creates repository objects from an explicit list of repository names
+ *
+ * @param owner Organization owner name
+ * @param repoNames Array of repository names
+ * @returns Array of repository objects
+ */
+function getExplicitRepositories(owner, repoNames) {
+    return repoNames.map(name => ({
+        owner,
+        name
+    }));
+}
 
 
 /***/ }),
