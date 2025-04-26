@@ -34848,9 +34848,8 @@ async function getChildIssues(client, parentNodeId) {
             "GraphQL-Features": "sub_issues"
         }
     });
-    console.log(JSON.stringify(response, null, 2));
     const childIssues = [];
-    for (const node of response.repository.issue.trackedInIssues.nodes) {
+    for (const node of response.node.subIssues.nodes) {
         childIssues.push({
             owner: node.repository.owner.login,
             repo: node.repository.name,
@@ -34869,7 +34868,7 @@ async function updateChildIssue(client, childIssue, parentIssue) {
         repo: childIssue.repo,
         issue_number: childIssue.number,
         title: "This is a child issue",
-        body: parentIssue.implementationDetails || 'See parent issue for details',
+        body: parentIssue.implementationDetails || 'Updated',
     });
 }
 /**

@@ -131,12 +131,10 @@ export async function getChildIssues(
       "GraphQL-Features": "sub_issues"
     }
   });
-
-  console.log(JSON.stringify(response, null, 2));
   
   const childIssues: IssueReference[] = [];
   
-  for (const node of response.repository.issue.trackedInIssues.nodes) {
+  for (const node of response.node.subIssues.nodes) {
     childIssues.push({
       owner: node.repository.owner.login,
       repo: node.repository.name,
@@ -161,7 +159,7 @@ export async function updateChildIssue(
     repo: childIssue.repo,
     issue_number: childIssue.number,
     title: "This is a child issue",
-    body: parentIssue.implementationDetails || 'See parent issue for details',
+    body: parentIssue.implementationDetails || 'Updated',
   });
 }
 
