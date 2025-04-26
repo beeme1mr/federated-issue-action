@@ -59,37 +59,67 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(8385));
-const github = __importStar(__nccwpck_require__(2485));
+const github_1 = __nccwpck_require__(2485);
 const config_1 = __nccwpck_require__(8959);
 /**
  * Main entry point for the SDK issue synchronization action
  */
 async function run() {
-    var _a;
+    var _a, _b;
     try {
         // Get inputs
         const token = core.getInput('github-token', { required: true });
         const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
         const requiredLabel = core.getInput('required-label') || 'federated';
         // Initialize GitHub client
-        const octokit = github.getOctokit(token);
+        const octokit = (0, github_1.getOctokit)(token);
         // Get current repo and context
-        const repo = github.context.repo.repo;
-        const action = github.context.payload.action;
-        const issueNumber = (_a = github.context.payload.issue) === null || _a === void 0 ? void 0 : _a.number;
+        const repo = github_1.context.repo.repo;
+        const owner = github_1.context.repo.owner;
+        const action = github_1.context.payload.action;
+        const issueNumber = (_a = github_1.context.payload.issue) === null || _a === void 0 ? void 0 : _a.number;
         // Skip non-issue events or issues without the required label
-        if (!github.context.payload.issue || !issueNumber) {
+        if (!github_1.context.payload.issue || !issueNumber) {
             core.info('Not an issue event, skipping');
             return;
         }
-        const issue = github.context.payload.issue;
+        const issue = github_1.context.payload.issue;
         const hasParentLabel = issue.labels.some((label) => label.name === requiredLabel);
         if (!hasParentLabel) {
             core.info(`Issue does not have ${requiredLabel} label, skipping`);
             return;
         }
-        const config = await getConfig(octokit, repo, configPath);
+        const config = await getConfig(octokit, owner, repo, configPath);
         console.log('Loaded configuration:', config);
+        const hasPermission = await validatePermission(octokit, config, owner, issue.user.login);
+        if (!hasPermission) {
+            core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
+            await addNoPermissionComment(octokit, owner, repo, issueNumber);
+            return;
+        }
+        // const { client, repo, action, issueNumber } = context;
+        // const { name: repoName } = repo;
+        // Extract issue details
+        const issueDetails = {
+            title: issue.title,
+            body: issue.body || '',
+            labels: ((_b = issue.labels) === null || _b === void 0 ? void 0 : _b.map((label) => label.name)) || [],
+            isOpen: issue.state === 'open',
+        };
+        switch (action) {
+            case 'opened':
+                console.log('Issue opened:', issueDetails);
+                break;
+            case 'edited':
+                console.log('Issue edited:', issueDetails);
+                break;
+            case 'closed':
+            case 'reopened':
+                console.log('Issue closed/reopened:', issueDetails);
+                break;
+            default:
+                core.info(`Action ${action} not handled`);
+        }
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -98,22 +128,16 @@ async function run() {
 }
 /**
  * Gets the action configuration from the repository
- *
- * @param octokit GitHub API client
- * @param repo Repository name
- * @param configPath Path to the configuration file
- * @returns The loaded configuration object
  */
-async function getConfig(octokit, repo, configPath) {
+async function getConfig(octokit, owner, repo, configPath) {
     try {
         const response = await octokit.rest.repos.getContent({
-            owner: github.context.repo.owner,
+            owner,
             repo,
             path: configPath,
-            ref: github.context.ref
+            ref: github_1.context.ref
         });
         if ("content" in response.data) {
-            console.log('Configuration file found:', response.data);
             const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
             return config_1.configSchema.parse(JSON.parse(content));
         }
@@ -122,6 +146,52 @@ async function getConfig(octokit, repo, configPath) {
     catch (error) {
         throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+}
+/**
+ * Validates if a user has permission to create parent issues
+ */
+async function validatePermission(client, config, owner, username) {
+    // Check if user owns the repo
+    if (owner === username) {
+        return true;
+    }
+    // Check if user is in the allowed users list
+    if (config.allowed.users.includes(username)) {
+        return true;
+    }
+    // Check team memberships
+    for (const team of config.allowed.teams) {
+        try {
+            // Extract team name from team slug (which might include org name)
+            const teamSlug = team.includes('/') ? team.split('/')[1] : team;
+            const teamOrg = team.includes('/') ? team.split('/')[0] : github_1.context.repo.owner;
+            const response = await client.rest.teams.getMembershipForUserInOrg({
+                org: teamOrg,
+                team_slug: teamSlug,
+                username
+            });
+            // If the API doesn't throw and returns active state, user is a member
+            if (response.status === 200 && response.data.state === 'active') {
+                return true;
+            }
+        }
+        catch (error) {
+            // Ignore errors, just continue checking other teams
+            continue;
+        }
+    }
+    return false;
+}
+/**
+ * Adds a comment to an issue indicating lack of permission
+ */
+async function addNoPermissionComment(client, owner, repo, issueNumber) {
+    return await client.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body: "⚠️ No permissions ⚠️\nYou don't have permission to create parent issues.",
+    });
 }
 run();
 
