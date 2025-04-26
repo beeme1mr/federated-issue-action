@@ -1,309 +1,6 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 8959:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.configSchema = void 0;
-const zod_1 = __nccwpck_require__(2558);
-const targetRepositorySelectors = zod_1.z.discriminatedUnion("method", [
-    zod_1.z.object({
-        method: zod_1.z.literal("name-pattern"),
-        identifier: zod_1.z.string(),
-        patternType: zod_1.z.enum(['starts-with', 'contains', 'ends-with']).default('contains'),
-    }),
-    zod_1.z.object({
-        method: zod_1.z.literal("explicit"),
-        repositories: zod_1.z.array(zod_1.z.string()),
-    }),
-]);
-exports.configSchema = zod_1.z.object({
-    allowed: zod_1.z.object({
-        users: zod_1.z.array(zod_1.z.string()).default([]),
-        teams: zod_1.z.array(zod_1.z.string()).default([]),
-    }).default({}).describe('List of users and teams allowed to create parent issues'),
-    targetRepositorySelectors: zod_1.z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
-});
-
-
-/***/ }),
-
-/***/ 6525:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-const core = __importStar(__nccwpck_require__(8385));
-const github_1 = __nccwpck_require__(2485);
-const config_1 = __nccwpck_require__(8959);
-const repo_discovery_1 = __nccwpck_require__(1982);
-/**
- * Main entry point for the SDK issue synchronization action
- */
-async function run() {
-    var _a, _b;
-    try {
-        // Get inputs
-        const token = core.getInput('github-token', { required: true });
-        const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
-        const requiredLabel = core.getInput('required-label') || 'federated';
-        // Initialize GitHub client
-        const octokit = (0, github_1.getOctokit)(token);
-        // Get current repo and context
-        const repo = github_1.context.repo.repo;
-        const owner = github_1.context.repo.owner;
-        const action = github_1.context.payload.action;
-        const issueNumber = (_a = github_1.context.payload.issue) === null || _a === void 0 ? void 0 : _a.number;
-        // Skip non-issue events or issues without the required label
-        if (!github_1.context.payload.issue || !issueNumber) {
-            core.info('Not an issue event, skipping');
-            return;
-        }
-        const issue = github_1.context.payload.issue;
-        const hasParentLabel = issue.labels.some((label) => label.name === requiredLabel);
-        if (!hasParentLabel) {
-            core.info(`Issue does not have ${requiredLabel} label, skipping`);
-            return;
-        }
-        const config = await getConfig(octokit, owner, repo, configPath);
-        console.log('Loaded configuration:', config);
-        const hasPermission = await validatePermission(octokit, config, owner, issue.user.login);
-        if (!hasPermission) {
-            core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
-            await addNoPermissionComment(octokit, owner, repo, issueNumber);
-            return;
-        }
-        const repos = await (0, repo_discovery_1.discoverRepositories)(octokit, config, owner);
-        console.log('Discovered repositories:', repos);
-        if (repos.length === 0) {
-            core.warning('No target repositories found for creating child issues');
-            return;
-        }
-        // const { client, repo, action, issueNumber } = context;
-        // const { name: repoName } = repo;
-        // Extract issue details
-        const issueDetails = {
-            title: issue.title,
-            body: issue.body || '',
-            labels: ((_b = issue.labels) === null || _b === void 0 ? void 0 : _b.map((label) => label.name)) || [],
-            isOpen: issue.state === 'open',
-        };
-        switch (action) {
-            case 'opened':
-                console.log('Issue opened:', issueDetails);
-                break;
-            case 'edited':
-                console.log('Issue edited:', issueDetails);
-                break;
-            case 'closed':
-            case 'reopened':
-                console.log('Issue closed/reopened:', issueDetails);
-                break;
-            default:
-                core.info(`Action ${action} not handled`);
-        }
-    }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        core.setFailed(`Action failed: ${errorMessage}`);
-    }
-}
-/**
- * Gets the action configuration from the repository
- */
-async function getConfig(octokit, owner, repo, configPath) {
-    try {
-        const response = await octokit.rest.repos.getContent({
-            owner,
-            repo,
-            path: configPath,
-            ref: github_1.context.ref
-        });
-        if ("content" in response.data) {
-            const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
-            return config_1.configSchema.parse(JSON.parse(content));
-        }
-        throw new Error('Configuration file not found or invalid');
-    }
-    catch (error) {
-        throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-}
-/**
- * Validates if a user has permission to create parent issues
- */
-async function validatePermission(client, config, owner, username) {
-    // Check if user owns the repo
-    if (owner === username) {
-        return true;
-    }
-    // Check if user is in the allowed users list
-    if (config.allowed.users.includes(username)) {
-        return true;
-    }
-    // Check team memberships
-    for (const team of config.allowed.teams) {
-        try {
-            // Extract team name from team slug (which might include org name)
-            const teamSlug = team.includes('/') ? team.split('/')[1] : team;
-            const teamOrg = team.includes('/') ? team.split('/')[0] : github_1.context.repo.owner;
-            const response = await client.rest.teams.getMembershipForUserInOrg({
-                org: teamOrg,
-                team_slug: teamSlug,
-                username
-            });
-            // If the API doesn't throw and returns active state, user is a member
-            if (response.status === 200 && response.data.state === 'active') {
-                return true;
-            }
-        }
-        catch (error) {
-            // Ignore errors, just continue checking other teams
-            continue;
-        }
-    }
-    return false;
-}
-/**
- * Adds a comment to an issue indicating lack of permission
- */
-async function addNoPermissionComment(client, owner, repo, issueNumber) {
-    return await client.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: issueNumber,
-        body: "⚠️ No permissions ⚠️\nYou don't have permission to create parent issues.",
-    });
-}
-run();
-
-
-/***/ }),
-
-/***/ 1982:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.discoverRepositories = discoverRepositories;
-/**
- * Discovers repositories where child issues will be created based on configured selectors
- */
-async function discoverRepositories(client, config, owner) {
-    const repoMap = new Map();
-    // Process each repository selector
-    for (const selector of config.targetRepositorySelectors) {
-        const repos = await getRepositoriesForSelector(client, selector, owner);
-        // Add to map using repo name as key to avoid duplicates
-        for (const repo of repos) {
-            repoMap.set(repo.name, repo);
-        }
-    }
-    return Array.from(repoMap.values());
-}
-/**
- * Gets repositories for a single selector
- */
-async function getRepositoriesForSelector(client, selector, owner) {
-    switch (selector.method) {
-        case 'name-pattern':
-            return await discoverByNamePattern(client, owner, selector.patternType, selector.identifier);
-        case 'explicit':
-            return getExplicitRepositories(owner, selector.repositories || []);
-        default:
-            throw new Error(`Unsupported selector type: ${selector.type}`);
-    }
-}
-/**
- * Discovers repositories by name pattern matching with different pattern types
- */
-async function discoverByNamePattern(client, owner, patternType, pattern) {
-    const repos = [];
-    // Get all repositories in the organization
-    const repositories = await client.paginate(client.rest.repos.listForOrg, {
-        org: owner,
-        per_page: 100,
-    });
-    for (const repo of repositories) {
-        let isMatch = false;
-        switch (patternType) {
-            case 'starts-with':
-                isMatch = repo.name.startsWith(pattern);
-                break;
-            case 'contains':
-                isMatch = repo.name.includes(pattern);
-                break;
-            case 'ends-with':
-                isMatch = repo.name.endsWith(pattern);
-                break;
-            default:
-                isMatch = repo.name.includes(pattern); // Default to 'contains'
-        }
-        if (isMatch) {
-            repos.push({
-                owner,
-                name: repo.name,
-                nodeId: repo.node_id
-            });
-        }
-    }
-    return repos;
-}
-/**
- * Creates repository objects from an explicit list of repository names
- *
- * @param owner Organization owner name
- * @param repoNames Array of repository names
- * @returns Array of repository objects
- */
-function getExplicitRepositories(owner, repoNames) {
-    return repoNames.map(name => ({
-        owner,
-        name
-    }));
-}
-
-
-/***/ }),
-
 /***/ 3069:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -34758,6 +34455,512 @@ exports.NEVER = parseUtil_1.INVALID;
 
 /***/ }),
 
+/***/ 7880:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.configSchema = void 0;
+const zod_1 = __nccwpck_require__(2558);
+const targetRepositorySelectors = zod_1.z.discriminatedUnion("method", [
+    zod_1.z.object({
+        method: zod_1.z.literal("name-pattern"),
+        identifier: zod_1.z.string(),
+        patternType: zod_1.z.enum(['starts-with', 'contains', 'ends-with']).default('contains'),
+    }),
+    zod_1.z.object({
+        method: zod_1.z.literal("explicit"),
+        repositories: zod_1.z.array(zod_1.z.string()),
+    }),
+]);
+exports.configSchema = zod_1.z.object({
+    allowed: zod_1.z.object({
+        users: zod_1.z.array(zod_1.z.string()).default([]),
+        teams: zod_1.z.array(zod_1.z.string()).default([]),
+    }).default({}).describe('List of users and teams allowed to create parent issues'),
+    targetRepositorySelectors: zod_1.z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
+});
+
+
+/***/ }),
+
+/***/ 1472:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __importStar(__nccwpck_require__(8385));
+const github_1 = __nccwpck_require__(2485);
+const config_1 = __nccwpck_require__(7880);
+const repo_discovery_1 = __nccwpck_require__(3893);
+const issue_operations_1 = __nccwpck_require__(2854);
+/**
+ * Main entry point for the SDK issue synchronization action
+ */
+async function run() {
+    try {
+        // Get inputs
+        const token = core.getInput('github-token', { required: true });
+        const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
+        const requiredLabel = core.getInput('required-label') || 'federated';
+        // Initialize GitHub client
+        const octokit = (0, github_1.getOctokit)(token);
+        // Get current repo and context
+        const repo = github_1.context.repo.repo;
+        const owner = github_1.context.repo.owner;
+        const action = github_1.context.payload.action;
+        const issueNumber = github_1.context.payload.issue?.number;
+        // Skip non-issue events or issues without the required label
+        if (!github_1.context.payload.issue || !issueNumber) {
+            core.info('Not an issue event, skipping');
+            return;
+        }
+        const issue = github_1.context.payload.issue;
+        const hasParentLabel = issue.labels.some((label) => label.name === requiredLabel);
+        if (!hasParentLabel) {
+            core.info(`Issue does not have ${requiredLabel} label, skipping`);
+            return;
+        }
+        const config = await getConfig(octokit, owner, repo, configPath);
+        console.log('Loaded configuration:', config);
+        const hasPermission = await validatePermission(octokit, config, owner, issue.user.login);
+        if (!hasPermission) {
+            core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
+            await addNoPermissionComment(octokit, owner, repo, issueNumber);
+            return;
+        }
+        const repos = await (0, repo_discovery_1.discoverRepositories)(octokit, config, owner);
+        console.log('Discovered repositories:', repos);
+        if (repos.length === 0) {
+            core.warning('No target repositories found for creating child issues');
+            return;
+        }
+        // const { client, repo, action, issueNumber } = context;
+        // const { name: repoName } = repo;
+        // Extract issue details
+        const issueDetails = {
+            title: issue.title,
+            body: issue.body || '',
+            labels: issue.labels?.map((label) => label.name) || [],
+            isOpen: issue.state === 'open',
+        };
+        switch (action) {
+            case 'opened':
+                console.log('Issue opened:', issueDetails);
+                handleIssueOpened(octokit, owner, repo, issueNumber, issueDetails, "", repos);
+                break;
+            case 'edited':
+                console.log('Issue edited:', issueDetails);
+                handleIssueEdited(octokit, owner, repo, issueNumber, issueDetails, "");
+                break;
+            case 'closed':
+            case 'reopened':
+                console.log('Issue closed/reopened:', issueDetails);
+                handleIssueStatusChanged(octokit, owner, repo, issueNumber, action === 'reopened');
+                break;
+            default:
+                core.info(`Action ${action} not handled`);
+        }
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        core.setFailed(`Action failed: ${errorMessage}`);
+    }
+}
+/**
+ * Gets the action configuration from the repository
+ */
+async function getConfig(octokit, owner, repo, configPath) {
+    try {
+        const response = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: configPath,
+            ref: github_1.context.ref
+        });
+        if ("content" in response.data) {
+            const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
+            return config_1.configSchema.parse(JSON.parse(content));
+        }
+        throw new Error('Configuration file not found or invalid');
+    }
+    catch (error) {
+        throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+/**
+ * Validates if a user has permission to create parent issues
+ */
+async function validatePermission(client, config, owner, username) {
+    // Check if user owns the repo
+    if (owner === username) {
+        return true;
+    }
+    // Check if user is in the allowed users list
+    if (config.allowed.users.includes(username)) {
+        return true;
+    }
+    // Check team memberships
+    for (const team of config.allowed.teams) {
+        try {
+            // Extract team name from team slug (which might include org name)
+            const teamSlug = team.includes('/') ? team.split('/')[1] : team;
+            const teamOrg = team.includes('/') ? team.split('/')[0] : github_1.context.repo.owner;
+            const response = await client.rest.teams.getMembershipForUserInOrg({
+                org: teamOrg,
+                team_slug: teamSlug,
+                username
+            });
+            // If the API doesn't throw and returns active state, user is a member
+            if (response.status === 200 && response.data.state === 'active') {
+                return true;
+            }
+        }
+        catch (error) {
+            // Ignore errors, just continue checking other teams
+            continue;
+        }
+    }
+    return false;
+}
+/**
+ * Adds a comment to an issue indicating lack of permission
+ */
+async function addNoPermissionComment(client, owner, repo, issueNumber) {
+    return await client.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body: "⚠️ No permissions ⚠️\nYou don't have permission to create parent issues.",
+    });
+}
+/**
+ * Handles the 'opened' event by creating child issues in SDK repositories
+ */
+async function handleIssueOpened(client, owner, parentRepo, issueNumber, issueDetails, parentIssueUrl, childRepos) {
+    const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(client, owner, parentRepo, issueNumber);
+    core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+    for (const repo of childRepos) {
+        console.log('Creating child issue in:', repo);
+        try {
+            core.info(`Creating child issue in ${repo.name}`);
+            const childIssue = await (0, issue_operations_1.createChildIssue)(client, issueDetails, repo, parentRepo, issueNumber, parentIssueUrl);
+            // Get the child issue node ID for linking
+            const childNodeId = childIssue.nodeId ||
+                await (0, issue_operations_1.getIssueNodeId)(client, childIssue.owner, childIssue.repo, childIssue.number);
+            // Link child issue as sub-item of parent
+            await (0, issue_operations_1.linkIssueAsSubItem)(client, parentIssueNodeId, childNodeId);
+            core.info(`Created and linked child issue ${repo.name}#${childIssue.number}`);
+        }
+        catch (error) {
+            core.warning(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+/**
+ * Handles the 'edited' event by updating child issues
+ */
+async function handleIssueEdited(client, owner, repo, issueNumber, issueDetails, parentIssueUrl) {
+    // Get all child issues
+    const childIssues = await (0, issue_operations_1.getChildIssues)(client, owner, repo, issueNumber);
+    core.info(`Found ${childIssues.length} child issues`);
+    // Update each child issue
+    for (const childIssue of childIssues) {
+        try {
+            core.info(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
+            await (0, issue_operations_1.updateChildIssue)(client, childIssue, issueDetails, repo, issueNumber, parentIssueUrl);
+            core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
+        }
+        catch (error) {
+            core.warning(`Failed to update child issue ${childIssue.repo}#${childIssue.number}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+/**
+ * Handles the 'closed' or 'reopened' events by updating child issue statuses
+ */
+async function handleIssueStatusChanged(client, owner, repo, issueNumber, isOpen) {
+    // Get all child issues
+    const childIssues = await (0, issue_operations_1.getChildIssues)(client, owner, repo, issueNumber);
+    core.info(`Found ${childIssues.length} child issues`);
+    // Update each child issue status
+    for (const childIssue of childIssues) {
+        try {
+            core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to ${isOpen ? 'open' : 'closed'}`);
+            await (0, issue_operations_1.updateChildIssueStatus)(client, childIssue, isOpen);
+            core.info(`Updated status of child issue ${childIssue.repo}#${childIssue.number}`);
+        }
+        catch (error) {
+            core.warning(`Failed to update status of child issue ${childIssue.repo}#${childIssue.number}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+run();
+
+
+/***/ }),
+
+/***/ 2854:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getIssueNodeId = getIssueNodeId;
+exports.createChildIssue = createChildIssue;
+exports.linkIssueAsSubItem = linkIssueAsSubItem;
+exports.getChildIssues = getChildIssues;
+exports.updateChildIssue = updateChildIssue;
+exports.updateChildIssueStatus = updateChildIssueStatus;
+/**
+ * Gets the node ID of an issue (for GraphQL operations)
+ */
+async function getIssueNodeId(client, owner, repo, issueNumber) {
+    const query = `
+    query GetIssueId($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        issue(number: $number) {
+          id
+        }
+      }
+    }
+  `;
+    const response = await client.graphql(query, {
+        owner,
+        repo,
+        number: issueNumber
+    });
+    return response.repository.issue.id;
+}
+/**
+ * Creates a child issue in a target repository
+ */
+async function createChildIssue(client, parentIssue, targetRepo, parentRepoName, parentIssueNumber, parentIssueUrl) {
+    // Create the child issue
+    const childIssueResponse = await client.rest.issues.create({
+        owner: targetRepo.owner,
+        repo: targetRepo.name,
+        title: "This is a child issue",
+        body: parentIssue.implementationDetails || 'See parent issue for details',
+        // labels: ['cross-sdk', determineIssueType(parentIssue.title)]
+    });
+    return {
+        owner: targetRepo.owner,
+        repo: targetRepo.name,
+        number: childIssueResponse.data.number,
+        nodeId: childIssueResponse.data.node_id
+    };
+}
+/**
+ * Links a child issue to a parent issue using the GitHub GraphQL API
+ */
+async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
+    const mutation = `
+    mutation AddSubItem($parentId: ID!, $childId: ID!) {
+      addProjectV2ItemSubItem(input: {
+        subItemId: $childId,
+        parentId: $parentId,
+      }) {
+        subItem {
+          id
+        }
+      }
+    }
+  `;
+    return await client.graphql(mutation, {
+        parentId: parentNodeId,
+        childId: childNodeId
+    });
+}
+/**
+ * Gets all child issues linked to a parent issue
+ */
+async function getChildIssues(client, owner, repo, issueNumber) {
+    const query = `
+    query GetSubItems($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        issue(number: $number) {
+          trackedInIssues(first: 100) {
+            nodes {
+              repository {
+                name
+                owner {
+                  login
+                }
+              }
+              number
+              id
+            }
+          }
+        }
+      }
+    }
+  `;
+    const response = await client.graphql(query, {
+        owner,
+        repo,
+        number: issueNumber
+    });
+    const childIssues = [];
+    for (const node of response.repository.issue.trackedInIssues.nodes) {
+        childIssues.push({
+            owner: node.repository.owner.login,
+            repo: node.repository.name,
+            number: node.number,
+            nodeId: node.id
+        });
+    }
+    return childIssues;
+}
+/**
+ * Updates a child issue with new content from the parent issue
+ */
+async function updateChildIssue(client, childIssue, parentIssue, parentRepoName, parentIssueNumber, parentIssueUrl) {
+    return await client.rest.issues.update({
+        owner: childIssue.owner,
+        repo: childIssue.repo,
+        issue_number: childIssue.number,
+        title: "This is a child issue",
+        body: parentIssue.implementationDetails || 'See parent issue for details',
+    });
+}
+/**
+ * Updates the status (open/closed) of a child issue
+ */
+async function updateChildIssueStatus(client, childIssue, isOpen) {
+    return await client.rest.issues.update({
+        owner: childIssue.owner,
+        repo: childIssue.repo,
+        issue_number: childIssue.number,
+        state: isOpen ? 'open' : 'closed'
+    });
+}
+
+
+/***/ }),
+
+/***/ 3893:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.discoverRepositories = discoverRepositories;
+/**
+ * Discovers repositories where child issues will be created based on configured selectors
+ */
+async function discoverRepositories(client, config, owner) {
+    const repoMap = new Map();
+    // Process each repository selector
+    for (const selector of config.targetRepositorySelectors) {
+        const repos = await getRepositoriesForSelector(client, selector, owner);
+        // Add to map using repo name as key to avoid duplicates
+        for (const repo of repos) {
+            repoMap.set(repo.name, repo);
+        }
+    }
+    return Array.from(repoMap.values());
+}
+/**
+ * Gets repositories for a single selector
+ */
+async function getRepositoriesForSelector(client, selector, owner) {
+    switch (selector.method) {
+        case 'name-pattern':
+            return await discoverByNamePattern(client, owner, selector.patternType, selector.identifier);
+        case 'explicit':
+            return getExplicitRepositories(owner, selector.repositories || []);
+        default:
+            throw new Error(`Unsupported selector type: ${selector.type}`);
+    }
+}
+/**
+ * Discovers repositories by name pattern matching with different pattern types
+ */
+async function discoverByNamePattern(client, owner, patternType, pattern) {
+    const repos = [];
+    // Get all repositories in the organization
+    const repositories = await client.paginate(client.rest.repos.listForOrg, {
+        org: owner,
+        per_page: 100,
+    });
+    for (const repo of repositories) {
+        let isMatch = false;
+        switch (patternType) {
+            case 'starts-with':
+                isMatch = repo.name.startsWith(pattern);
+                break;
+            case 'contains':
+                isMatch = repo.name.includes(pattern);
+                break;
+            case 'ends-with':
+                isMatch = repo.name.endsWith(pattern);
+                break;
+            default:
+                isMatch = repo.name.includes(pattern); // Default to 'contains'
+        }
+        if (isMatch) {
+            repos.push({
+                owner,
+                name: repo.name,
+                nodeId: repo.node_id
+            });
+        }
+    }
+    return repos;
+}
+/**
+ * Creates repository objects from an explicit list of repository names
+ *
+ * @param owner Organization owner name
+ * @param repoNames Array of repository names
+ * @returns Array of repository objects
+ */
+function getExplicitRepositories(owner, repoNames) {
+    return repoNames.map(name => ({
+        owner,
+        name
+    }));
+}
+
+
+/***/ }),
+
 /***/ 2613:
 /***/ ((module) => {
 
@@ -36673,7 +36876,7 @@ module.exports = parseParams
 /******/ 	// startup
 /******/ 	// Load entry module and return exports
 /******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(6525);
+/******/ 	var __webpack_exports__ = __nccwpck_require__(1472);
 /******/ 	module.exports = __webpack_exports__;
 /******/ 	
 /******/ })()

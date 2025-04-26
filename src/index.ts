@@ -74,7 +74,6 @@ async function run(): Promise<void> {
       body: issue.body || '',
       labels: issue.labels?.map((label: any) => label.name) || [],
       isOpen: issue.state === 'open',
-
     }
 
     switch (action) {
@@ -203,18 +202,21 @@ async function handleIssueOpened(
   issueNumber: number,
   issueDetails: IssueDetails,
   parentIssueUrl: string,
-  sdkRepos: Repository[]
+  childRepos: Repository[]
 ): Promise<void> {
   const parentIssueNodeId = await getIssueNodeId(client, owner, parentRepo, issueNumber);
 
-  for (const sdkRepo of sdkRepos) {
+  core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+
+  for (const repo of childRepos) {
+    console.log('Creating child issue in:', repo);
     try {
-      core.info(`Creating child issue in ${sdkRepo.name}`);
+      core.info(`Creating child issue in ${repo.name}`);
 
       const childIssue = await createChildIssue(
         client,
         issueDetails,
-        sdkRepo,
+        repo,
         parentRepo,
         issueNumber,
         parentIssueUrl
@@ -227,9 +229,9 @@ async function handleIssueOpened(
       // Link child issue as sub-item of parent
       await linkIssueAsSubItem(client, parentIssueNodeId, childNodeId);
 
-      core.info(`Created and linked child issue ${sdkRepo.name}#${childIssue.number}`);
+      core.info(`Created and linked child issue ${repo.name}#${childIssue.number}`);
     } catch (error) {
-      core.warning(`Failed to create child issue in ${sdkRepo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      core.warning(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
