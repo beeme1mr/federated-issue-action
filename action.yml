@@ -1,24 +1,19 @@
-name: The name of your action here
-description: Provide a description here
-author: Your name or organization here
-
-# Add your action's branding here. This will appear on the GitHub Marketplace.
+name: "Federated Issue Management"
+description: "Manage issues across multiple repositories in a federated manner."
+author: "Michael Beemer"
 branding:
-  icon: heart
-  color: red
+  icon: "copy"
+  color: "blue"
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: Your input description here
+  github-token:
+    description: 'GitHub token with permissions to create and modify issues across repositories'
     required: true
-    default: '1000'
-
-# Define your outputs here.
-outputs:
-  time:
-    description: Your output description here
+  config-path:
+    description: 'Path to the configuration file'
+    required: false
+    default: '.github/sdk-issue-sync-config.json'
 
 runs:
-  using: node20
-  main: dist/index.js
+  using: 'node20'
+  main: 'dist/index.js'
