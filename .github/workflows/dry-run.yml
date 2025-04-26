@@ -2,7 +2,7 @@ name: "Dry Run Federated Issue Management"
 
 on:
   issues:
-    types: [opened, edited, closed, reopened, labeled, unlabeled]
+    types: [edited, closed, labeled, unlabeled]
 
 jobs:
   dry-run:

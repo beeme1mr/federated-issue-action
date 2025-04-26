@@ -34580,7 +34580,7 @@ async function run() {
             isOpen: issue.state === 'open',
         };
         switch (action) {
-            case 'opened':
+            case 'labeled':
                 console.log('Issue opened:', issueDetails);
                 handleIssueOpened(octokit, owner, repo, issueNumber, issueDetails, "", repos);
                 break;
@@ -34589,9 +34589,9 @@ async function run() {
                 handleIssueEdited(octokit, owner, repo, issueNumber, issueDetails, "");
                 break;
             case 'closed':
-            case 'reopened':
+            case 'unlabeled':
                 console.log('Issue closed/reopened:', issueDetails);
-                handleIssueStatusChanged(octokit, owner, repo, issueNumber, action === 'reopened');
+                handleIssueStatusChanged(octokit, owner, repo, issueNumber);
                 break;
             default:
                 core.info(`Action ${action} not handled`);
@@ -34714,15 +34714,15 @@ async function handleIssueEdited(client, owner, repo, issueNumber, issueDetails,
 /**
  * Handles the 'closed' or 'reopened' events by updating child issue statuses
  */
-async function handleIssueStatusChanged(client, owner, repo, issueNumber, isOpen) {
+async function handleIssueStatusChanged(client, owner, repo, issueNumber) {
     // Get all child issues
     const childIssues = await (0, issue_operations_1.getChildIssues)(client, owner, repo, issueNumber);
     core.info(`Found ${childIssues.length} child issues`);
     // Update each child issue status
     for (const childIssue of childIssues) {
         try {
-            core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to ${isOpen ? 'open' : 'closed'}`);
-            await (0, issue_operations_1.updateChildIssueStatus)(client, childIssue, isOpen);
+            core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
+            await (0, issue_operations_1.updateChildIssueStatus)(client, childIssue, false);
             core.info(`Updated status of child issue ${childIssue.repo}#${childIssue.number}`);
         }
         catch (error) {
@@ -34791,12 +34791,17 @@ async function createChildIssue(client, parentIssue, targetRepo, parentRepoName,
  */
 async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
     const mutation = `
-    mutation AddSubItem($parentId: ID!, $childId: ID!) {
-      addProjectV2ItemSubItem(input: {
+    mutation addSubIssue($parentId: ID!, $childId: ID!) {
+      addSubIssue(input: {
         subItemId: $childId,
         parentId: $parentId,
       }) {
-        subItem {
+        issue {
+          title
+          id
+        }
+        subIssue {
+          title
           id
         }
       }
@@ -34804,7 +34809,10 @@ async function linkIssueAsSubItem(client, parentNodeId, childNodeId) {
   `;
     return await client.graphql(mutation, {
         parentId: parentNodeId,
-        childId: childNodeId
+        childId: childNodeId,
+        headers: {
+            "GraphQL-Features": "sub_issues"
+        }
     });
 }
 /**
@@ -34834,7 +34842,10 @@ async function getChildIssues(client, owner, repo, issueNumber) {
     const response = await client.graphql(query, {
         owner,
         repo,
-        number: issueNumber
+        number: issueNumber,
+        headers: {
+            "GraphQL-Features": "sub_issues"
+        }
     });
     const childIssues = [];
     for (const node of response.repository.issue.trackedInIssues.nodes) {

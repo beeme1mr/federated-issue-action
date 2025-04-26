@@ -23,7 +23,7 @@ async function run(): Promise<void> {
     // Get current repo and context
     const repo = context.repo.repo;
     const owner = context.repo.owner;
-    const action = context.payload.action as 'opened' | 'edited' | 'closed' | 'reopened';
+    const action = context.payload.action as 'edited' | 'closed' | 'labeled' | 'unlabeled';
     const issueNumber = context.payload.issue?.number;
 
     // Skip non-issue events or issues without the required label
@@ -77,7 +77,7 @@ async function run(): Promise<void> {
     }
 
     switch (action) {
-      case 'opened':
+      case 'labeled':
         console.log('Issue opened:', issueDetails);
         handleIssueOpened(octokit, owner, repo, issueNumber, issueDetails, "", repos);
         break;
@@ -88,9 +88,9 @@ async function run(): Promise<void> {
         break;
 
       case 'closed':
-      case 'reopened':
+      case 'unlabeled':
         console.log('Issue closed/reopened:', issueDetails);
-        handleIssueStatusChanged(octokit, owner, repo, issueNumber, action === 'reopened');
+        handleIssueStatusChanged(octokit, owner, repo, issueNumber);
         break;
 
       default:
@@ -280,7 +280,6 @@ async function handleIssueStatusChanged(
   owner: string,
   repo: string,
   issueNumber: number,
-  isOpen: boolean
 ): Promise<void> {
   // Get all child issues
   const childIssues = await getChildIssues(client, owner, repo, issueNumber);
@@ -289,9 +288,9 @@ async function handleIssueStatusChanged(
   // Update each child issue status
   for (const childIssue of childIssues) {
     try {
-      core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to ${isOpen ? 'open' : 'closed'}`);
+      core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
 
-      await updateChildIssueStatus(client, childIssue, isOpen);
+      await updateChildIssueStatus(client, childIssue, false);
 
       core.info(`Updated status of child issue ${childIssue.repo}#${childIssue.number}`);
     } catch (error) {

@@ -65,12 +65,17 @@ export async function linkIssueAsSubItem(
   childNodeId: string
 ): Promise<unknown> {
   const mutation = `
-    mutation AddSubItem($parentId: ID!, $childId: ID!) {
-      addProjectV2ItemSubItem(input: {
+    mutation addSubIssue($parentId: ID!, $childId: ID!) {
+      addSubIssue(input: {
         subItemId: $childId,
         parentId: $parentId,
       }) {
-        subItem {
+        issue {
+          title
+          id
+        }
+        subIssue {
+          title
           id
         }
       }
@@ -79,7 +84,10 @@ export async function linkIssueAsSubItem(
   
   return await client.graphql(mutation, {
     parentId: parentNodeId,
-    childId: childNodeId
+    childId: childNodeId,
+    headers: {
+      "GraphQL-Features": "sub_issues"
+    }
   });
 }
 
@@ -116,7 +124,10 @@ export async function getChildIssues(
   const response: any = await client.graphql(query, {
     owner,
     repo,
-    number: issueNumber
+    number: issueNumber,
+    headers: {
+      "GraphQL-Features": "sub_issues"
+    }
   });
   
   const childIssues: IssueReference[] = [];
