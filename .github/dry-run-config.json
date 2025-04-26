@@ -1,3 +1,15 @@
 {
-  "test": true
+  "$schema": "../config.schema.json",
+  "allowed": {
+    "users": [],
+    "teams": []
+  },
+  "targetRepositorySelectors": [
+    {
+      "method": "explicit",
+      "repositories": [
+        "github-actions-experiments"
+      ]
+    }
+  ]
 }

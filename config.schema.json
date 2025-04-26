@@ -1,0 +1,84 @@
+{
+  "type": "object",
+  "properties": {
+    "allowed": {
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "description": "List of users and teams allowed to create parent issues"
+    },
+    "targetRepositorySelectors": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "const": "name-pattern"
+              },
+              "identifier": {
+                "type": "string"
+              },
+              "patternType": {
+                "type": "string",
+                "enum": [
+                  "starts-with",
+                  "contains",
+                  "ends-with"
+                ],
+                "default": "contains"
+              }
+            },
+            "required": [
+              "method",
+              "identifier"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "const": "explicit"
+              },
+              "repositories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "method",
+              "repositories"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "default": [],
+      "description": "List of selectors for target repositories where the child issue will be created"
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
