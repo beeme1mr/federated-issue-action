@@ -1,7 +1,8 @@
 name: "Dry Run Federated Issue Management"
 
 on:
-  workflow_dispatch:
+  issues:
+    types: [opened, edited, closed, reopened]
 
 jobs:
   dry-run:
@@ -14,5 +15,4 @@ jobs:
         uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          config-path: .github/sdk-issue-sync-config.json
-          dry-run: true
+          config-path: .github/dry-run-config.json

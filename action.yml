@@ -9,10 +9,14 @@ inputs:
   github-token:
     description: 'GitHub token with permissions to create and modify issues across repositories'
     required: true
+  required-label:
+    description: 'Label that must be present on the issue to trigger the action'
+    required: true
+    default: 'federated'
   config-path:
     description: 'Path to the configuration file'
     required: false
-    default: '.github/sdk-issue-sync-config.json'
+    default: '.github/federated-issue-action-config.json'
 
 runs:
   using: 'node20'

@@ -8,8 +8,9 @@ async function run(): Promise<void> {
   try {
     // Get inputs
     const token = core.getInput('github-token', { required: true });
-    const configPath = core.getInput('config-path') || '.github/sdk-issue-sync-config.json';
-    
+    const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
+    const requiredLabel = core.getInput('required-label') || 'federated';
+
     // Initialize GitHub client
     const octokit = github.getOctokit(token);
     
@@ -25,10 +26,10 @@ async function run(): Promise<void> {
     }
     
     const issue = github.context.payload.issue;
-    const hasParentLabel = issue.labels.some((label: any) => label.name === 'sdk-parent');
+    const hasParentLabel = issue.labels.some((label: { name: string }) => label.name === requiredLabel);
     
     if (!hasParentLabel) {
-      core.info('Issue does not have sdk-parent label, skipping');
+      core.info(`Issue does not have ${requiredLabel} label, skipping`);
       return;
     }
     
