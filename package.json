@@ -4,7 +4,7 @@
   "description": "Synchronizes issues across multiple repositories",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && ncc build lib/index.js -o dist",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,6 +18,8 @@
   },
   "homepage": "https://github.com/beeme1mr/federated-issue-action#readme",
   "devDependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0",
     "typescript": "^5.8.3"
   }
 }

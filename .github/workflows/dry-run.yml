@@ -11,4 +11,8 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Run dry run
-        run: node dist/index.js --dry-run
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          config-path: .github/sdk-issue-sync-config.json
+          dry-run: true
