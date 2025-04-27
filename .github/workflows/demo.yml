@@ -17,7 +17,7 @@ jobs:
         uses: stefanbuck/github-issue-parser@v3
         id: issue-parser
         with:
-          template-path: .github/ISSUE_TEMPLATE/demo.yml
+          template-path: .github/ISSUE_TEMPLATE/demo.yaml
 
       - name: Run Demo
         uses: ./
