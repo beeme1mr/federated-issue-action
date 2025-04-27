@@ -15,6 +15,7 @@ async function run(): Promise<void> {
     const notifyMissingPermissions = core.getBooleanInput('notify-missing-permissions')
     const closeIssuesOnParentClose = core.getBooleanInput('close-issues-on-parent-close');
 
+
     const octokit = getOctokit(token);
 
     // Get current repo and context
@@ -69,9 +70,10 @@ async function run(): Promise<void> {
     core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
     const childIssueDetails = {
-      title: issue.title,
-      body: issue.body || '',
-      labels: config.issueTemplate.labels,
+      title: core.getInput('child-issue-title') || issue.title,
+      body: core.getInput('child-issue-body') || issue.body || '',
+      // TODO support custom labels - core.getInput('child-issue-labels')
+      labels: [],
     } satisfies IssueDetails;
 
     switch (action) {

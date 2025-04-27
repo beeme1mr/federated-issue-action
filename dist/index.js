@@ -34480,11 +34480,6 @@ exports.configSchema = zod_1.z.object({
         teams: zod_1.z.array(zod_1.z.string()).default([]),
     }).default({}).describe('List of users and teams allowed to create parent issues'),
     targetRepositorySelectors: zod_1.z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
-    issueTemplate: zod_1.z.object({
-        // title: z.string().describe('Title of the child issue'),
-        // body: z.string().describe('Body content of the child issue'),
-        labels: zod_1.z.array(zod_1.z.string()).default([]).describe('Labels to apply to the child issue'),
-    }).describe('Template for creating child issues'),
 });
 
 
@@ -34580,9 +34575,10 @@ async function run() {
         const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(octokit, owner, repo, issueNumber);
         core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
         const childIssueDetails = {
-            title: issue.title,
-            body: issue.body || '',
-            labels: config.issueTemplate.labels,
+            title: core.getInput('child-issue-title') || issue.title,
+            body: core.getInput('child-issue-body') || issue.body || '',
+            // TODO support custom labels - core.getInput('child-issue-labels')
+            labels: [],
         };
         switch (action) {
             case 'labeled':

@@ -25,6 +25,18 @@ inputs:
     description: 'Path to the configuration file'
     required: false
     default: '.github/federated-issue-action-config.json'
+  child-issue-title:
+    description: 'Title for the child issue'
+    required: false
+    default: '${{ github.event.issue.title }}'
+  child-issue-body:
+    description: 'Body for the child issue'
+    required: false
+    default: '${{ github.event.issue.body }}'
+  # child-issue-labels:
+  #   description: 'Labels for the child issue'
+  #   required: false
+  #   default: '[]'
 
 runs:
   using: 'node20'

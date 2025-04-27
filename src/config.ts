@@ -19,12 +19,6 @@ export const configSchema = z.object({
   }).default({}).describe('List of users and teams allowed to create parent issues'),
 
   targetRepositorySelectors: z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
-
-  issueTemplate: z.object({
-    // title: z.string().describe('Title of the child issue'),
-    // body: z.string().describe('Body content of the child issue'),
-    labels: z.array(z.string()).default([]).describe('Labels to apply to the child issue'),
-  }).describe('Template for creating child issues'),
 });
 
 export type Config = z.infer<typeof configSchema>;

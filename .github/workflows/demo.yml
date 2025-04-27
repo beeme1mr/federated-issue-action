@@ -1,0 +1,28 @@
+name: "Demo Federated Issue Management"
+
+on:
+  issues:
+    types: [edited, closed, labeled, unlabeled]
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    # Only run this job when the issue has the specific label
+    if: contains(github.event.issue.labels.*.name, 'federated')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Parse issue form
+        uses: stefanbuck/github-issue-parser@v3
+        id: issue-parser
+        with:
+          template-path: .github/ISSUE_TEMPLATE/demo.yml
+
+      - name: Run Demo
+        uses: ./
+        with:
+          github-token: ${{ secrets.ISSUE_MANAGEMENT_PAT }}
+          config-path: .github/demo-run-config.json
+          child-issue-title: ${{ steps.issue-parser.outputs.issueparser_sub-issue-title }}
+          child-issue-body: ${{ steps.issue-parser.outputs.issueparser_sub-issue-body }}
