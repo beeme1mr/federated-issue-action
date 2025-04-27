@@ -33,16 +33,15 @@ export async function getIssueNodeId(
  */
 export async function createChildIssue(
   client: Octokit,
-  parentIssue: IssueDetails,
+  childIssueDetails: IssueDetails,
   targetRepo: Repository,
 ): Promise<IssueReference> {
-  // Create the child issue
   const childIssueResponse = await client.rest.issues.create({
     owner: targetRepo.owner,
     repo: targetRepo.name,
-    title: "This is a child issue",
-    body: parentIssue.implementationDetails || 'See parent issue for details',
-    // labels: ['cross-sdk', determineIssueType(parentIssue.title)]
+    title: childIssueDetails.title,
+    body: childIssueDetails.body,
+    labels: childIssueDetails.labels,
   });
   
   return {
@@ -152,14 +151,13 @@ export async function getChildIssues(
 export async function updateChildIssue(
   client: Octokit,
   childIssue: IssueReference,
-  parentIssue: IssueDetails,
+  childIssueDetails: IssueDetails,
 ): Promise<unknown> {
   return await client.rest.issues.update({
     owner: childIssue.owner,
     repo: childIssue.repo,
     issue_number: childIssue.number,
-    title: "This is a child issue",
-    body: parentIssue.implementationDetails || 'Updated',
+    ...childIssueDetails
   });
 }
 

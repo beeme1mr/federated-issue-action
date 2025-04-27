@@ -34480,6 +34480,11 @@ exports.configSchema = zod_1.z.object({
         teams: zod_1.z.array(zod_1.z.string()).default([]),
     }).default({}).describe('List of users and teams allowed to create parent issues'),
     targetRepositorySelectors: zod_1.z.array(targetRepositorySelectors).default([]).describe('List of selectors for target repositories where the child issue will be created'),
+    issueTemplate: zod_1.z.object({
+        // title: z.string().describe('Title of the child issue'),
+        // body: z.string().describe('Body content of the child issue'),
+        labels: zod_1.z.array(zod_1.z.string()).default([]).describe('Labels to apply to the child issue'),
+    }).describe('Template for creating child issues'),
 });
 
 
@@ -34527,8 +34532,8 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(8385));
 const github_1 = __nccwpck_require__(2485);
 const config_1 = __nccwpck_require__(7880);
-const repo_discovery_1 = __nccwpck_require__(3893);
 const issue_operations_1 = __nccwpck_require__(2854);
+const repo_discovery_1 = __nccwpck_require__(3893);
 async function run() {
     try {
         const token = core.getInput('github-token', { required: true });
@@ -34572,21 +34577,19 @@ async function run() {
             core.warning('No target repositories found for creating child issues');
             return;
         }
-        // Extract issue details
-        const issueDetails = {
-            title: issue.title,
-            body: issue.body || '',
-            labels: issue.labels?.map((label) => label.name) || [],
-            isOpen: issue.state === 'open',
-        };
         const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(octokit, owner, repo, issueNumber);
         core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
+        const childIssueDetails = {
+            title: issue.title,
+            body: issue.body || '',
+            labels: config.issueTemplate.labels,
+        };
         switch (action) {
             case 'labeled':
-                handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
+                handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
                 break;
             case 'edited':
-                handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
+                handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
                 break;
             case 'closed':
                 if (closeIssuesOnParentClose) {
@@ -34673,12 +34676,11 @@ async function addNoPermissionComment(client, owner, repo, issueNumber) {
         body: "⚠️ No permissions ⚠️\nYou don't have permission to create parent issues.",
     });
 }
-async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childRepos) {
-    core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
+async function handleIssueOpened(client, parentIssueNodeId, childIssueDetails, childRepos) {
     for (const repo of childRepos) {
         try {
             core.debug(`Creating child issue in ${repo.name}`);
-            const childIssue = await (0, issue_operations_1.createChildIssue)(client, issueDetails, repo);
+            const childIssue = await (0, issue_operations_1.createChildIssue)(client, childIssueDetails, repo);
             // Get the child issue node ID for linking
             const childNodeId = childIssue.nodeId ||
                 await (0, issue_operations_1.getIssueNodeId)(client, childIssue.owner, childIssue.repo, childIssue.number);
@@ -34694,13 +34696,13 @@ async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childR
 /**
  * Handles the 'edited' event by updating child issues
  */
-async function handleIssueEdited(client, parentIssueNodeId, issueDetails) {
+async function handleIssueEdited(client, parentIssueNodeId, childIssueDetails) {
     const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
     core.debug(`Found ${childIssues.length} child issues`);
     for (const childIssue of childIssues) {
         try {
             core.debug(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
-            await (0, issue_operations_1.updateChildIssue)(client, childIssue, issueDetails);
+            await (0, issue_operations_1.updateChildIssue)(client, childIssue, childIssueDetails);
             core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
         }
         catch (error) {
@@ -34765,14 +34767,13 @@ async function getIssueNodeId(client, owner, repo, issueNumber) {
 /**
  * Creates a child issue in a target repository
  */
-async function createChildIssue(client, parentIssue, targetRepo) {
-    // Create the child issue
+async function createChildIssue(client, childIssueDetails, targetRepo) {
     const childIssueResponse = await client.rest.issues.create({
         owner: targetRepo.owner,
         repo: targetRepo.name,
-        title: "This is a child issue",
-        body: parentIssue.implementationDetails || 'See parent issue for details',
-        // labels: ['cross-sdk', determineIssueType(parentIssue.title)]
+        title: childIssueDetails.title,
+        body: childIssueDetails.body,
+        labels: childIssueDetails.labels,
     });
     return {
         owner: targetRepo.owner,
@@ -34859,13 +34860,12 @@ async function getChildIssues(client, parentNodeId) {
 /**
  * Updates a child issue with new content from the parent issue
  */
-async function updateChildIssue(client, childIssue, parentIssue) {
+async function updateChildIssue(client, childIssue, childIssueDetails) {
     return await client.rest.issues.update({
         owner: childIssue.owner,
         repo: childIssue.repo,
         issue_number: childIssue.number,
-        title: "This is a child issue",
-        body: parentIssue.implementationDetails || 'Updated',
+        ...childIssueDetails
     });
 }
 /**

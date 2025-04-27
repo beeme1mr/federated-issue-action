@@ -11,5 +11,10 @@
         "github-actions-experiments"
       ]
     }
-  ]
+  ],
+  "issueTemplate": {
+    "labels": [
+      "demo"
+    ]
+  }
 }

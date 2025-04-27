@@ -44,10 +44,6 @@ export interface IssueDetails {
   body: string;
   /** Issue labels */
   labels: string[];
-  /** Whether the issue is open (true) or closed (false) */
-  isOpen: boolean;
-  /** Implementation details extracted from the issue body */
-  implementationDetails?: string;
 }
 
 /**

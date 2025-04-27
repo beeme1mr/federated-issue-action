@@ -82,8 +82,26 @@
       },
       "default": [],
       "description": "List of selectors for target repositories where the child issue will be created"
+    },
+    "issueTemplate": {
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Labels to apply to the child issue"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Template for creating child issues"
     }
   },
+  "required": [
+    "issueTemplate"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
 }

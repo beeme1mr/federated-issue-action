@@ -1,9 +1,9 @@
 import * as core from '@actions/core';
-import { getOctokit, context } from '@actions/github';
+import { context, getOctokit } from '@actions/github';
 import { Config, configSchema } from './config';
+import { createChildIssue, getChildIssues, getIssueNodeId, linkIssueAsSubItem, updateChildIssue, updateChildIssueStatus } from './issue-operations';
 import { discoverRepositories } from './repo-discovery';
 import { IssueDetails, Repository } from './types';
-import { createChildIssue, getChildIssues, getIssueNodeId, linkIssueAsSubItem, updateChildIssue, updateChildIssueStatus } from './issue-operations';
 
 type Octokit = ReturnType<typeof getOctokit>;
 
@@ -65,24 +65,22 @@ async function run(): Promise<void> {
       return;
     }
 
-    // Extract issue details
-    const issueDetails = {
-      title: issue.title,
-      body: issue.body || '',
-      labels: issue.labels?.map((label: any) => label.name) || [],
-      isOpen: issue.state === 'open',
-    }
-
     const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
     core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
+    const childIssueDetails = {
+      title: issue.title,
+      body: issue.body || '',
+      labels: config.issueTemplate.labels,
+    } satisfies IssueDetails;
+
     switch (action) {
       case 'labeled':
-        handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
+        handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
         break;
 
       case 'edited':
-        handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
+        handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
         break;
 
       case 'closed':
@@ -196,10 +194,9 @@ async function addNoPermissionComment(
 async function handleIssueOpened(
   client: Octokit,
   parentIssueNodeId: string,
-  issueDetails: IssueDetails,
+  childIssueDetails: IssueDetails,
   childRepos: Repository[]
 ): Promise<void> {
-  core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
   for (const repo of childRepos) {
     try {
@@ -207,7 +204,7 @@ async function handleIssueOpened(
 
       const childIssue = await createChildIssue(
         client,
-        issueDetails,
+        childIssueDetails,
         repo,
       );
 
@@ -231,7 +228,7 @@ async function handleIssueOpened(
 async function handleIssueEdited(
   client: Octokit,
   parentIssueNodeId: string,
-  issueDetails: IssueDetails,
+  childIssueDetails: IssueDetails,
 ): Promise<void> {
   const childIssues = await getChildIssues(client, parentIssueNodeId);
   core.debug(`Found ${childIssues.length} child issues`);
@@ -243,7 +240,7 @@ async function handleIssueEdited(
       await updateChildIssue(
         client,
         childIssue,
-        issueDetails,
+        childIssueDetails,
       );
 
       core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
