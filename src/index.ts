@@ -7,17 +7,14 @@ import { createChildIssue, getChildIssues, getIssueNodeId, linkIssueAsSubItem, u
 
 type Octokit = ReturnType<typeof getOctokit>;
 
-/**
- * Main entry point for the SDK issue synchronization action
- */
 async function run(): Promise<void> {
   try {
-    // Get inputs
     const token = core.getInput('github-token', { required: true });
     const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
     const requiredLabel = core.getInput('required-label') || 'federated';
+    const notifyMissingPermissions = core.getBooleanInput('notify-missing-permissions')
+    const closeIssuesOnParentClose = core.getBooleanInput('close-issues-on-parent-close');
 
-    // Initialize GitHub client
     const octokit = getOctokit(token);
 
     // Get current repo and context
@@ -28,7 +25,7 @@ async function run(): Promise<void> {
 
     // Skip non-issue events or issues without the required label
     if (!context.payload.issue || !issueNumber) {
-      core.info('Not an issue event, skipping');
+      core.debug('Not an issue event, skipping');
       return;
     }
 
@@ -42,8 +39,6 @@ async function run(): Promise<void> {
 
     const config = await getConfig(octokit, owner, repo, configPath);
 
-    console.log('Loaded configuration:', config)
-
     const hasPermission = await validatePermission(
       octokit,
       config,
@@ -53,7 +48,12 @@ async function run(): Promise<void> {
 
     if (!hasPermission) {
       core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
-      await addNoPermissionComment(octokit, owner, repo, issueNumber);
+      if (notifyMissingPermissions) {
+        core.debug('Notifying user about missing permissions');
+        await addNoPermissionComment(octokit, owner, repo, issueNumber);
+      } else {
+        core.debug('Skipping notification about missing permissions');
+      }
       return;
     }
 
@@ -65,9 +65,6 @@ async function run(): Promise<void> {
       return;
     }
 
-    // const { client, repo, action, issueNumber } = context;
-    // const { name: repoName } = repo;
-
     // Extract issue details
     const issueDetails = {
       title: issue.title,
@@ -77,23 +74,24 @@ async function run(): Promise<void> {
     }
 
     const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
-    core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+    core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
     switch (action) {
       case 'labeled':
-        console.log('Issue opened:', issueDetails);
         handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
         break;
 
       case 'edited':
-        console.log('Issue edited:', issueDetails);
         handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
         break;
 
       case 'closed':
-      case 'unlabeled':
-        console.log('Issue closed/reopened:', issueDetails);
-        handleIssueStatusChanged(octokit, parentIssueNodeId);
+        if (closeIssuesOnParentClose) {
+          core.debug('Closing child issues on parent issue close');
+          handleIssueStatusChanged(octokit, parentIssueNodeId);
+        } else {
+          core.debug('Not closing child issues on parent issue close');
+        }
         break;
 
       default:
@@ -157,7 +155,7 @@ async function validatePermission(
     try {
       // Extract team name from team slug (which might include org name)
       const teamSlug = team.includes('/') ? team.split('/')[1] : team;
-      const teamOrg = team.includes('/') ? team.split('/')[0] : context.repo.owner;
+      const teamOrg = team.includes('/') ? team.split('/')[0] : owner;
 
       const response = await client.rest.teams.getMembershipForUserInOrg({
         org: teamOrg,
@@ -201,12 +199,11 @@ async function handleIssueOpened(
   issueDetails: IssueDetails,
   childRepos: Repository[]
 ): Promise<void> {
-  core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+  core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
   for (const repo of childRepos) {
-    console.log('Creating child issue in:', repo);
     try {
-      core.info(`Creating child issue in ${repo.name}`);
+      core.debug(`Creating child issue in ${repo.name}`);
 
       const childIssue = await createChildIssue(
         client,
@@ -223,7 +220,7 @@ async function handleIssueOpened(
 
       core.info(`Created and linked child issue ${repo.name}#${childIssue.number}`);
     } catch (error) {
-      core.warning(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      core.error(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
@@ -236,14 +233,12 @@ async function handleIssueEdited(
   parentIssueNodeId: string,
   issueDetails: IssueDetails,
 ): Promise<void> {
-  // Get all child issues
   const childIssues = await getChildIssues(client, parentIssueNodeId);
-  core.info(`Found ${childIssues.length} child issues`);
+  core.debug(`Found ${childIssues.length} child issues`);
 
-  // Update each child issue
   for (const childIssue of childIssues) {
     try {
-      core.info(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
+      core.debug(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
 
       await updateChildIssue(
         client,
@@ -265,14 +260,12 @@ async function handleIssueStatusChanged(
   client: Octokit,
   parentIssueNodeId: string,
 ): Promise<void> {
-  // Get all child issues
   const childIssues = await getChildIssues(client, parentIssueNodeId);
-  core.info(`Found ${childIssues.length} child issues`);
+  core.debug(`Found ${childIssues.length} child issues`);
 
-  // Update each child issue status
   for (const childIssue of childIssues) {
     try {
-      core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
+      core.debug(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
 
       await updateChildIssueStatus(client, childIssue, false);
 

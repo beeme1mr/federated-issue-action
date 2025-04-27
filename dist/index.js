@@ -34465,13 +34465,13 @@ exports.configSchema = void 0;
 const zod_1 = __nccwpck_require__(2558);
 const targetRepositorySelectors = zod_1.z.discriminatedUnion("method", [
     zod_1.z.object({
-        method: zod_1.z.literal("name-pattern"),
-        identifier: zod_1.z.string(),
-        patternType: zod_1.z.enum(['starts-with', 'contains', 'ends-with']).default('contains'),
+        method: zod_1.z.literal("name-pattern").describe('Match repositories by name pattern'),
+        identifier: zod_1.z.string().describe('Identifier fragment of the repository name to match, e.g. "sdk"'),
+        patternType: zod_1.z.enum(['starts-with', 'contains', 'ends-with']).default('contains').describe('Type of pattern matching to use'),
     }),
     zod_1.z.object({
-        method: zod_1.z.literal("explicit"),
-        repositories: zod_1.z.array(zod_1.z.string()),
+        method: zod_1.z.literal("explicit").describe('Explicitly list repositories'),
+        repositories: zod_1.z.array(zod_1.z.string()).describe('List of repositories to match, e.g. "dotnet-sdk"'),
     }),
 ]);
 exports.configSchema = zod_1.z.object({
@@ -34529,16 +34529,13 @@ const github_1 = __nccwpck_require__(2485);
 const config_1 = __nccwpck_require__(7880);
 const repo_discovery_1 = __nccwpck_require__(3893);
 const issue_operations_1 = __nccwpck_require__(2854);
-/**
- * Main entry point for the SDK issue synchronization action
- */
 async function run() {
     try {
-        // Get inputs
         const token = core.getInput('github-token', { required: true });
         const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
         const requiredLabel = core.getInput('required-label') || 'federated';
-        // Initialize GitHub client
+        const notifyMissingPermissions = core.getBooleanInput('notify-missing-permissions');
+        const closeIssuesOnParentClose = core.getBooleanInput('close-issues-on-parent-close');
         const octokit = (0, github_1.getOctokit)(token);
         // Get current repo and context
         const repo = github_1.context.repo.repo;
@@ -34547,7 +34544,7 @@ async function run() {
         const issueNumber = github_1.context.payload.issue?.number;
         // Skip non-issue events or issues without the required label
         if (!github_1.context.payload.issue || !issueNumber) {
-            core.info('Not an issue event, skipping');
+            core.debug('Not an issue event, skipping');
             return;
         }
         const issue = github_1.context.payload.issue;
@@ -34557,11 +34554,16 @@ async function run() {
             return;
         }
         const config = await getConfig(octokit, owner, repo, configPath);
-        console.log('Loaded configuration:', config);
         const hasPermission = await validatePermission(octokit, config, owner, issue.user.login);
         if (!hasPermission) {
             core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
-            await addNoPermissionComment(octokit, owner, repo, issueNumber);
+            if (notifyMissingPermissions) {
+                core.debug('Notifying user about missing permissions');
+                await addNoPermissionComment(octokit, owner, repo, issueNumber);
+            }
+            else {
+                core.debug('Skipping notification about missing permissions');
+            }
             return;
         }
         const repos = await (0, repo_discovery_1.discoverRepositories)(octokit, config, owner);
@@ -34570,8 +34572,6 @@ async function run() {
             core.warning('No target repositories found for creating child issues');
             return;
         }
-        // const { client, repo, action, issueNumber } = context;
-        // const { name: repoName } = repo;
         // Extract issue details
         const issueDetails = {
             title: issue.title,
@@ -34580,20 +34580,22 @@ async function run() {
             isOpen: issue.state === 'open',
         };
         const parentIssueNodeId = await (0, issue_operations_1.getIssueNodeId)(octokit, owner, repo, issueNumber);
-        core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+        core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
         switch (action) {
             case 'labeled':
-                console.log('Issue opened:', issueDetails);
                 handleIssueOpened(octokit, parentIssueNodeId, issueDetails, repos);
                 break;
             case 'edited':
-                console.log('Issue edited:', issueDetails);
                 handleIssueEdited(octokit, parentIssueNodeId, issueDetails);
                 break;
             case 'closed':
-            case 'unlabeled':
-                console.log('Issue closed/reopened:', issueDetails);
-                handleIssueStatusChanged(octokit, parentIssueNodeId);
+                if (closeIssuesOnParentClose) {
+                    core.debug('Closing child issues on parent issue close');
+                    handleIssueStatusChanged(octokit, parentIssueNodeId);
+                }
+                else {
+                    core.debug('Not closing child issues on parent issue close');
+                }
                 break;
             default:
                 core.info(`Action ${action} not handled`);
@@ -34642,7 +34644,7 @@ async function validatePermission(client, config, owner, username) {
         try {
             // Extract team name from team slug (which might include org name)
             const teamSlug = team.includes('/') ? team.split('/')[1] : team;
-            const teamOrg = team.includes('/') ? team.split('/')[0] : github_1.context.repo.owner;
+            const teamOrg = team.includes('/') ? team.split('/')[0] : owner;
             const response = await client.rest.teams.getMembershipForUserInOrg({
                 org: teamOrg,
                 team_slug: teamSlug,
@@ -34672,11 +34674,10 @@ async function addNoPermissionComment(client, owner, repo, issueNumber) {
     });
 }
 async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childRepos) {
-    core.info(`Parent issue node ID: ${parentIssueNodeId}`);
+    core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
     for (const repo of childRepos) {
-        console.log('Creating child issue in:', repo);
         try {
-            core.info(`Creating child issue in ${repo.name}`);
+            core.debug(`Creating child issue in ${repo.name}`);
             const childIssue = await (0, issue_operations_1.createChildIssue)(client, issueDetails, repo);
             // Get the child issue node ID for linking
             const childNodeId = childIssue.nodeId ||
@@ -34686,7 +34687,7 @@ async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childR
             core.info(`Created and linked child issue ${repo.name}#${childIssue.number}`);
         }
         catch (error) {
-            core.warning(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            core.error(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 }
@@ -34694,13 +34695,11 @@ async function handleIssueOpened(client, parentIssueNodeId, issueDetails, childR
  * Handles the 'edited' event by updating child issues
  */
 async function handleIssueEdited(client, parentIssueNodeId, issueDetails) {
-    // Get all child issues
     const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
-    core.info(`Found ${childIssues.length} child issues`);
-    // Update each child issue
+    core.debug(`Found ${childIssues.length} child issues`);
     for (const childIssue of childIssues) {
         try {
-            core.info(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
+            core.debug(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
             await (0, issue_operations_1.updateChildIssue)(client, childIssue, issueDetails);
             core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
         }
@@ -34713,13 +34712,11 @@ async function handleIssueEdited(client, parentIssueNodeId, issueDetails) {
  * Handles the 'closed' or 'reopened' events by updating child issue statuses
  */
 async function handleIssueStatusChanged(client, parentIssueNodeId) {
-    // Get all child issues
     const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
-    core.info(`Found ${childIssues.length} child issues`);
-    // Update each child issue status
+    core.debug(`Found ${childIssues.length} child issues`);
     for (const childIssue of childIssues) {
         try {
-            core.info(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
+            core.debug(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
             await (0, issue_operations_1.updateChildIssueStatus)(client, childIssue, false);
             core.info(`Updated status of child issue ${childIssue.repo}#${childIssue.number}`);
         }

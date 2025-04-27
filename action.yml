@@ -13,6 +13,14 @@ inputs:
     description: 'Label that must be present on the issue to trigger the action'
     required: true
     default: 'federated'
+  notify-missing-permissions:
+    description: 'Notifies the user if they do not have permissions to create issues in the target repository'
+    required: false
+    default: 'true'
+  close-issues-on-parent-close:
+    description: 'Close issues in the child repositories when the parent issue is closed'
+    required: false
+    default: 'true'
   config-path:
     description: 'Path to the configuration file'
     required: false

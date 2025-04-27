@@ -32,10 +32,12 @@
             "properties": {
               "method": {
                 "type": "string",
-                "const": "name-pattern"
+                "const": "name-pattern",
+                "description": "Match repositories by name pattern"
               },
               "identifier": {
-                "type": "string"
+                "type": "string",
+                "description": "Identifier fragment of the repository name to match, e.g. \"sdk\""
               },
               "patternType": {
                 "type": "string",
@@ -44,7 +46,8 @@
                   "contains",
                   "ends-with"
                 ],
-                "default": "contains"
+                "default": "contains",
+                "description": "Type of pattern matching to use"
               }
             },
             "required": [
@@ -58,13 +61,15 @@
             "properties": {
               "method": {
                 "type": "string",
-                "const": "explicit"
+                "const": "explicit",
+                "description": "Explicitly list repositories"
               },
               "repositories": {
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "List of repositories to match, e.g. \"dotnet-sdk\""
               }
             },
             "required": [

@@ -1,18 +1,18 @@
-name: "Dry Run Federated Issue Management"
+name: "Demo Federated Issue Management"
 
 on:
   issues:
     types: [edited, closed, labeled, unlabeled]
 
 jobs:
-  dry-run:
+  demo:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Run dry run
+      - name: Run Demo
         uses: ./
         with:
           github-token: ${{ secrets.ISSUE_MANAGEMENT_PAT }}
-          config-path: .github/dry-run-config.json
+          config-path: .github/demo-run-config.json

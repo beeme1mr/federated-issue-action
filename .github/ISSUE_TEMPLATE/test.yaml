@@ -1,0 +1,31 @@
+name: Federated Issue Template
+description: A template for federated issue management.
+labels:
+  - federated
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a template for federated issue management. It will be used to create issues in multiple repositories if you have the appropriate permissions.
+  - type: input
+    id: issue_title
+    attributes:
+      label: Issue Title
+      description: The title of the issue to be created.
+      placeholder: "Enter the issue title"
+  - type: textarea
+    id: issue_body
+    attributes:
+      label: Issue Body
+      description: The body of the issue to be created.
+      placeholder: "Enter the issue body"
+  - type: markdown
+    attributes:
+      value: |
+        Please add information about the issue you want to create. You can use Markdown syntax to format your text.
+  - type: textarea
+    id: sub-issue-body
+    attributes:
+      label: Implementation Details
+      description: Details about the implementation of the issue.

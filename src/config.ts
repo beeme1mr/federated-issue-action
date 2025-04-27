@@ -2,13 +2,13 @@ import { z } from "zod";
 
 const targetRepositorySelectors = z.discriminatedUnion("method", [
   z.object({
-    method: z.literal("name-pattern"),
-    identifier: z.string(),
-    patternType: z.enum(['starts-with', 'contains', 'ends-with']).default('contains'),
+    method: z.literal("name-pattern").describe('Match repositories by name pattern'),
+    identifier: z.string().describe('Identifier fragment of the repository name to match, e.g. "sdk"'),
+    patternType: z.enum(['starts-with', 'contains', 'ends-with']).default('contains').describe('Type of pattern matching to use'),
   }),
   z.object({
-    method: z.literal("explicit"),
-    repositories: z.array(z.string()),
+    method: z.literal("explicit").describe('Explicitly list repositories'),
+    repositories: z.array(z.string()).describe('List of repositories to match, e.g. "dotnet-sdk"'),
   }),
 ])
 
