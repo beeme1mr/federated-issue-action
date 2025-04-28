@@ -42,7 +42,9 @@ export async function validatePermission(
       } catch (error: any) {
         // Handle 404 Not Found specifically - user is not in the team
         if (error.status !== 404) {
-          console.warn(`Error checking team membership for ${username} in ${teamSlug}: ${error.message}`);
+          console.debug(
+            `Error checking team membership for ${username} in ${teamSlug}: ${error.message}`
+          );
         }
         // Continue checking other teams
       }

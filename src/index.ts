@@ -3,44 +3,48 @@ import { context, getOctokit } from '@actions/github';
 import { Config, configSchema } from './config';
 import { createChildIssue, getChildIssues, getIssueNodeId, linkIssueAsSubItem, updateChildIssue, updateChildIssueStatus } from './issue-operations';
 import { discoverRepositories } from './repo-discovery';
-import { IssueDetails, Repository } from './types';
-import { validatePermission } from './permissions';
+import { IssueDetails, Repository, Settings } from "./types";
+import { validatePermission } from "./permissions";
 
 type Octokit = ReturnType<typeof getOctokit>;
 
-// Extracted core logic for better testability
 export async function runActionLogic(
   octokit: Octokit,
   actionContext: typeof context,
-  inputs: {
-    configPath: string;
-    requiredLabel: string;
-    notifyMissingPermissions: boolean;
-    closeIssuesOnParentClose: boolean;
-    childIssueTitleTemplate: string;
-    childIssueBodyTemplate: string;
-  }
+  settings: Settings
 ): Promise<void> {
   const repo = actionContext.repo.repo;
   const owner = actionContext.repo.owner;
-  const action = actionContext.payload.action as 'edited' | 'closed' | 'labeled' | 'unlabeled';
+  const action = actionContext.payload.action as
+    | "edited"
+    | "closed"
+    | "labeled"
+    | "unlabeled";
   const issueNumber = actionContext.payload.issue?.number;
 
   // Skip non-issue events or issues without the required label
   if (!actionContext.payload.issue || !issueNumber) {
-    core.debug('Not an issue event, skipping');
+    core.debug("Not an issue event, skipping");
     return;
   }
 
   const issue = actionContext.payload.issue;
-  const hasParentLabel = issue.labels.some((label: { name: string }) => label.name === inputs.requiredLabel);
+  const hasParentLabel = issue.labels.some(
+    (label: { name: string }) => label.name === settings.requiredLabel
+  );
 
   if (!hasParentLabel) {
-    core.info(`Issue does not have ${inputs.requiredLabel} label, skipping`);
+    core.info(`Issue does not have ${settings.requiredLabel} label, skipping`);
     return;
   }
 
-  const config = await getConfig(octokit, owner, repo, inputs.configPath, actionContext.ref);
+  const config = await getConfig(
+    octokit,
+    owner,
+    repo,
+    settings.configPath,
+    actionContext.ref
+  );
 
   const hasPermission = await validatePermission(
     octokit,
@@ -50,50 +54,67 @@ export async function runActionLogic(
   );
 
   if (!hasPermission) {
-    core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
-    if (inputs.notifyMissingPermissions) {
-      core.debug('Notifying user about missing permissions');
+    core.warning(
+      `User ${issue.user.login} does not have permission to create SDK parent issues`
+    );
+    if (settings.notifyMissingPermissions) {
+      core.debug("Notifying user about missing permissions");
       await addNoPermissionComment(octokit, owner, repo, issueNumber);
     } else {
-      core.debug('Skipping notification about missing permissions');
+      core.debug("Skipping notification about missing permissions");
     }
     return;
   }
 
   const repos = await discoverRepositories(octokit, config, owner);
 
-  console.log('Discovered repositories:', repos);
   if (repos.length === 0) {
-    core.warning('No target repositories found for creating child issues');
+    core.warning("No target repositories found for creating child issues");
     return;
   }
 
-  const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
+  const parentIssueNodeId = await getIssueNodeId(
+    octokit,
+    owner,
+    repo,
+    issueNumber
+  );
   core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
   // Interpolate title and body templates (basic example, might need more robust templating)
   const childIssueDetails = {
-    title: inputs.childIssueTitleTemplate.replace('${{ github.event.issue.title }}', issue.title),
-    body: inputs.childIssueBodyTemplate.replace('${{ github.event.issue.body }}', issue.body || ''),
+    title: settings.childIssueTitleTemplate.replace(
+      "${{ github.event.issue.title }}",
+      issue.title
+    ),
+    body: settings.childIssueBodyTemplate.replace(
+      "${{ github.event.issue.body }}",
+      issue.body || ""
+    ),
     // TODO support custom labels - core.getInput('child-issue-labels')
     labels: [],
   } satisfies IssueDetails;
 
   switch (action) {
-    case 'labeled':
-      await handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
+    case "labeled":
+      await handleIssueOpened(
+        octokit,
+        parentIssueNodeId,
+        childIssueDetails,
+        repos
+      );
       break;
 
-    case 'edited':
+    case "edited":
       await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
       break;
 
-    case 'closed':
-      if (inputs.closeIssuesOnParentClose) {
-        core.debug('Closing child issues on parent issue close');
+    case "closed":
+      if (settings.closeIssuesOnParentClose) {
+        core.debug("Closing child issues on parent issue close");
         await handleIssueStatusChanged(octokit, parentIssueNodeId);
       } else {
-        core.debug('Not closing child issues on parent issue close');
+        core.debug("Not closing child issues on parent issue close");
       }
       break;
 
@@ -110,23 +131,29 @@ export async function getConfig(
   owner: string,
   repo: string,
   configPath: string,
-  ref: string // Pass ref explicitly
+  ref: string
 ): Promise<Config> {
   try {
     const response = await octokit.rest.repos.getContent({
       owner,
       repo,
       path: configPath,
-      ref: ref
+      ref,
     });
 
     if ("content" in response.data) {
-      const content = Buffer.from(response.data.content, 'base64').toString('utf-8');
+      const content = Buffer.from(response.data.content, "base64").toString(
+        "utf-8"
+      );
       return configSchema.parse(JSON.parse(content));
     }
-    throw new Error('Configuration file not found or invalid');
+    throw new Error("Configuration file not found or invalid");
   } catch (error) {
-    throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to load configuration from ${configPath}: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
 
@@ -138,7 +165,8 @@ async function addNoPermissionComment(
   owner: string,
   repo: string,
   issueNumber: number
-): Promise<void> { // Return void for consistency
+): Promise<void> {
+  // Return void for consistency
   await client.rest.issues.createComment({
     owner,
     repo,
@@ -153,7 +181,6 @@ async function handleIssueOpened(
   childIssueDetails: IssueDetails,
   childRepos: Repository[]
 ): Promise<void> {
-
   for (const repo of childRepos) {
     try {
       core.debug(`Creating child issue in ${repo.name}`);
@@ -161,19 +188,31 @@ async function handleIssueOpened(
       const childIssue = await createChildIssue(
         client,
         childIssueDetails,
-        repo,
+        repo
       );
 
       // Get the child issue node ID for linking
-      const childNodeId = childIssue.nodeId ||
-        await getIssueNodeId(client, childIssue.owner, childIssue.repo, childIssue.number);
+      const childNodeId =
+        childIssue.nodeId ||
+        (await getIssueNodeId(
+          client,
+          childIssue.owner,
+          childIssue.repo,
+          childIssue.number
+        ));
 
       // Link child issue as sub-item of parent
       await linkIssueAsSubItem(client, parentIssueNodeId, childNodeId);
 
-      core.info(`Created and linked child issue ${repo.name}#${childIssue.number}`);
+      core.info(
+        `Created and linked child issue ${repo.name}#${childIssue.number}`
+      );
     } catch (error) {
-      core.error(`Failed to create child issue in ${repo.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      core.error(
+        `Failed to create child issue in ${repo.name}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 }
@@ -184,24 +223,26 @@ async function handleIssueOpened(
 async function handleIssueEdited(
   client: Octokit,
   parentIssueNodeId: string,
-  childIssueDetails: IssueDetails,
+  childIssueDetails: IssueDetails
 ): Promise<void> {
   const childIssues = await getChildIssues(client, parentIssueNodeId);
   core.debug(`Found ${childIssues.length} child issues`);
 
   for (const childIssue of childIssues) {
     try {
-      core.debug(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
-
-      await updateChildIssue(
-        client,
-        childIssue,
-        childIssueDetails,
+      core.debug(
+        `Updating child issue ${childIssue.repo}#${childIssue.number}`
       );
+
+      await updateChildIssue(client, childIssue, childIssueDetails);
 
       core.info(`Updated child issue ${childIssue.repo}#${childIssue.number}`);
     } catch (error) {
-      core.warning(`Failed to update child issue ${childIssue.repo}#${childIssue.number}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      core.warning(
+        `Failed to update child issue ${childIssue.repo}#${
+          childIssue.number
+        }: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
 }
@@ -211,20 +252,28 @@ async function handleIssueEdited(
  */
 async function handleIssueStatusChanged(
   client: Octokit,
-  parentIssueNodeId: string,
+  parentIssueNodeId: string
 ): Promise<void> {
   const childIssues = await getChildIssues(client, parentIssueNodeId);
   core.debug(`Found ${childIssues.length} child issues`);
 
   for (const childIssue of childIssues) {
     try {
-      core.debug(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
+      core.debug(
+        `Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`
+      );
 
       await updateChildIssueStatus(client, childIssue, false);
 
-      core.info(`Updated status of child issue ${childIssue.repo}#${childIssue.number}`);
+      core.info(
+        `Updated status of child issue ${childIssue.repo}#${childIssue.number}`
+      );
     } catch (error) {
-      core.warning(`Failed to update status of child issue ${childIssue.repo}#${childIssue.number}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      core.warning(
+        `Failed to update status of child issue ${childIssue.repo}#${
+          childIssue.number
+        }: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   }
 }
@@ -232,22 +281,30 @@ async function handleIssueStatusChanged(
 // Main execution wrapper
 async function run(): Promise<void> {
   try {
-    const token = core.getInput('github-token', { required: true });
-    const inputs = {
-      configPath: core.getInput('config-path') || '.github/federated-issue-action-config.json',
-      requiredLabel: core.getInput('required-label') || 'federated',
-      notifyMissingPermissions: core.getBooleanInput('notify-missing-permissions'),
-      closeIssuesOnParentClose: core.getBooleanInput('close-issues-on-parent-close'),
-      childIssueTitleTemplate: core.getInput('child-issue-title') || '${{ github.event.issue.title }}',
-      childIssueBodyTemplate: core.getInput('child-issue-body') || '${{ github.event.issue.body }}',
-    };
+    const token = core.getInput("github-token", { required: true });
+    const settings = {
+      configPath:
+        core.getInput("config-path") ||
+        ".github/federated-issue-action-config.json",
+      requiredLabel: core.getInput("required-label") || "federated",
+      notifyMissingPermissions: core.getBooleanInput(
+        "notify-missing-permissions"
+      ),
+      closeIssuesOnParentClose: core.getBooleanInput(
+        "close-issues-on-parent-close"
+      ),
+      childIssueTitleTemplate:
+        core.getInput("child-issue-title") || "${{ github.event.issue.title }}",
+      childIssueBodyTemplate:
+        core.getInput("child-issue-body") || "${{ github.event.issue.body }}",
+    } satisfies Settings;
 
     const octokit = getOctokit(token);
 
-    await runActionLogic(octokit, context, inputs);
-
+    await runActionLogic(octokit, context, settings);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     core.setFailed(`Action failed: ${errorMessage}`);
   }
 }

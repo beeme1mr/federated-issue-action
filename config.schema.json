@@ -35,11 +35,11 @@
                 "const": "name-pattern",
                 "description": "Match repositories by name pattern"
               },
-              "identifier": {
+              "pattern": {
                 "type": "string",
-                "description": "Identifier fragment of the repository name to match, e.g. \"sdk\""
+                "description": "Pattern of the repository name to match, e.g. \"sdk\""
               },
-              "patternType": {
+              "operator": {
                 "type": "string",
                 "enum": [
                   "starts-with",
@@ -47,12 +47,12 @@
                   "ends-with"
                 ],
                 "default": "contains",
-                "description": "Type of pattern matching to use"
+                "description": "The operation to use for matching the pattern"
               }
             },
             "required": [
               "method",
-              "identifier"
+              "pattern"
             ],
             "additionalProperties": false
           },

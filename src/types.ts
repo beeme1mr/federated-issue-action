@@ -2,6 +2,21 @@ import type { getOctokit } from '@actions/github';
 
 export type Octokit = ReturnType<typeof getOctokit>;
 
+export interface Settings {
+  /** Path to the configuration file */
+  configPath: string;
+  /** Required label for parent issues */
+  requiredLabel: string;
+  /** Notify users about missing permissions */
+  notifyMissingPermissions: boolean;
+  /** Close child issues when parent issue is closed */
+  closeIssuesOnParentClose: boolean;
+  /** Template for child issue title */
+  childIssueTitleTemplate: string;
+  /** Template for child issue body */
+  childIssueBodyTemplate: string;
+}
+
 /**
  * GitHub repository reference
  */

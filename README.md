@@ -8,12 +8,12 @@ The primary use case is for scenarios where a central issue needs to track work 
 
 **Key Features:**
 
-*   **Automatic Child Issue Creation:** Creates issues in target repositories when a parent issue is labeled.
-*   **Issue Linking:** Uses GitHub's sub-issue tracking feature to link child issues to the parent.
-*   **Content Synchronization:** Updates child issue titles and bodies when the parent issue is edited.
-*   **Status Synchronization:** Closes child issues when the parent issue is closed (configurable).
-*   **Flexible Repository Discovery:** Target repositories can be specified explicitly or discovered using naming patterns.
-*   **Permission Control:** Restrict who can trigger the creation of federated issues using user and team lists.
+* **Automatic Child Issue Creation:** Creates issues in target repositories when a parent issue is labeled.
+* **Issue Linking:** Uses GitHub's sub-issue tracking feature to link child issues to the parent.
+* **Content Synchronization:** Updates child issue titles and bodies when the parent issue is edited.
+* **Status Synchronization:** Closes child issues when the parent issue is closed (configurable).
+* **Flexible Repository Discovery:** Target repositories can be specified explicitly or discovered using naming patterns.
+* **Permission Control:** Restrict who can trigger the creation of federated issues using user and team lists.
 
 ## Usage
 
@@ -46,9 +46,7 @@ jobs:
           # child-issue-title: '[Federated] ${{ github.event.issue.title }}' 
           
           # Optional: Customize child issue body (defaults to parent body)
-          # child-issue-body: 'Parent issue: ${{ github.event.issue.html_url }}
-
-${{ github.event.issue.body }}'
+          # child-issue-body: 'Parent issue: ${{ github.event.issue.body }}'
           
           # Optional: Notify user if they lack permissions (default: true)
           # notify-missing-permissions: 'true'
@@ -57,19 +55,19 @@ ${{ github.event.issue.body }}'
           # close-issues-on-parent-close: 'true'
 ```
 
-**Important:** Replace `secrets.YOUR_PAT_SECRET` with the name of a repository secret containing a GitHub Personal Access Token (PAT) or use the default `secrets.GITHUB_TOKEN` if it has sufficient permissions (see (Permissions section)[permissions]).
+**Important:** Replace `secrets.YOUR_PAT_SECRET` with the name of a repository secret containing a GitHub Personal Access Token (PAT) or use the default `secrets.GITHUB_TOKEN` if it has sufficient permissions (see [Permissions section](#permissions)).
 
 ## Configuration Options (Inputs)
 
 The action accepts the following inputs (defined in `action.yml`):
 
-*   `github-token` (**Required**): A GitHub token with permissions to manage issues across the relevant repositories. See the Permissions section below.
-*   `required-label` (Optional, Default: `federated`): The label that must be present on the parent issue to trigger the action.
-*   `config-path` (Optional, Default: `.github/federated-issue-action-config.json`): The path within the repository to the JSON configuration file.
-*   `child-issue-title` (Optional, Default: Parent issue title): Template for the title of the child issues. You can use GitHub expression syntax (e.g., `${{ github.event.issue.title }}`).
-*   `child-issue-body` (Optional, Default: Parent issue body): Template for the body of the child issues. You can use GitHub expression syntax.
-*   `notify-missing-permissions` (Optional, Default: `true`): If `true`, adds a comment to the parent issue if the user triggering the action lacks the necessary permissions defined in the config file.
-*   `close-issues-on-parent-close` (Optional, Default: `true`): If `true`, automatically closes linked child issues when the parent issue is closed.
+* `github-token` (**Required**): A GitHub token with permissions to manage issues across the relevant repositories. See the Permissions section below.
+* `required-label` (Optional, Default: `federated`): The label that must be present on the parent issue to trigger the action.
+* `config-path` (Optional, Default: `.github/federated-issue-action-config.json`): The path within the repository to the JSON configuration file.
+* `child-issue-title` (Optional, Default: Parent issue title): Template for the title of the child issues. You can use GitHub expression syntax (e.g., `${{ github.event.issue.title }}`).
+* `child-issue-body` (Optional, Default: Parent issue body): Template for the body of the child issues. You can use GitHub expression syntax.
+* `notify-missing-permissions` (Optional, Default: `true`): If `true`, adds a comment to the parent issue if the user triggering the action lacks the necessary permissions defined in the config file.
+* `close-issues-on-parent-close` (Optional, Default: `true`): If `true`, automatically closes linked child issues when the parent issue is closed.
 
 ## Configuration File
 
@@ -86,8 +84,8 @@ The action requires a JSON configuration file (specified by `config-path`) to de
   "targetRepositorySelectors": [
     {
       "method": "name-pattern",
-      "identifier": "sdk",
-      "patternType": "contains" 
+      "pattern": "sdk",
+      "operator": "contains" 
     },
     {
       "method": "explicit",
@@ -99,54 +97,54 @@ The action requires a JSON configuration file (specified by `config-path`) to de
 
 **Fields:**
 
-*   `allowed`: (Optional) Defines who can trigger the creation/management of federated issues. If omitted or empty, anyone who can label the issue can trigger the action (subject to the `github-token` permissions).
-    *   `users`: An array of GitHub usernames.
-    *   `teams`: An array of GitHub team slugs. Use `org-name/team-slug` for teams outside the parent repository's organization.
-*   `targetRepositorySelectors`: (**Required**) An array defining how to find the repositories where child issues should be created.
-    *   `method`: How to select repositories.
-        *   `name-pattern`: Selects repositories based on their name.
-            *   `identifier`: The string pattern to match in the repository name.
-            *   `patternType`: (Optional, Default: `contains`) How to match the `identifier`. Options: `starts-with`, `contains`, `ends-with`.
-        *   `explicit`: Selects repositories by explicitly listing their names.
-            *   `repositories`: An array of repository names (without the owner). The action assumes these repositories are in the same organization as the parent repository.
+* `allowed`: (Optional) Defines who can trigger the creation/management of federated issues. If omitted or empty, anyone who can label the issue can trigger the action (subject to the `github-token` permissions).
+  * `users`: An array of GitHub usernames.
+  * `teams`: An array of GitHub team slugs. Use `org-name/team-slug` for teams outside the parent repository's organization.
+* `targetRepositorySelectors`: (**Required**) An array defining how to find the repositories where child issues should be created.
+  * `method`: How to select repositories.
+    * `name-pattern`: Selects repositories based on their name.
+      * `pattern`: The string pattern to match in the repository name.
+      * `operator`: (Optional, Default: `contains`) How to match the `pattern`. Options: `starts-with`, `contains`, `ends-with`.
+    * `explicit`: Selects repositories by explicitly listing their names.
+      * `repositories`: An array of repository names (without the owner). The action assumes these repositories are in the same organization as the parent repository.
 
 ## Permissions
 
 The `github-token` used requires the following permissions:
 
-*   **Parent Repository:**
-    *   `contents: read` (to read the configuration file)
-    *   `issues: read` (to read issue details like labels, title, body)
-    *   `issues: write` (to add comments if `notify-missing-permissions` is true)
-    *   `metadata: read` (implicit)
-*   **Target Repositories:**
-    *   `issues: write` (to create, update, and close child issues)
-*   **Organization (if using `allowed.teams`):**
-    *   `members: read` (to check team membership)
+* **Parent Repository:**
+  * `contents: read` (to read the configuration file)
+  * `issues: read` (to read issue details like labels, title, body)
+  * `issues: write` (to add comments if `notify-missing-permissions` is true)
+  * `metadata: read` (implicit)
+* **Target Repositories:**
+  * `issues: write` (to create, update, and close child issues)
+* **Organization (if using `allowed.teams`):**
+  * `members: read` (to check team membership)
 
 It's recommended to use a **Personal Access Token (PAT)** with the necessary scopes (`repo`, `read:org`) stored as a repository secret, rather than the default `GITHUB_TOKEN`, especially if managing issues across different private repositories or organizations.
 
 ## How it Works
 
-1.  **Trigger:** The workflow is triggered by `issues` events (`labeled`, `edited`, `closed`).
-2.  **Label Check:** The action checks if the triggering issue has the `required-label`.
-3.  **Configuration Load:** It reads the configuration file specified by `config-path`.
-4.  **Permission Check:** If `allowed` users/teams are defined, it verifies if the user who triggered the event (e.g., added the label) is authorized. If not, it optionally comments and exits.
-5.  **Repository Discovery:** It finds target repositories based on the `targetRepositorySelectors`.
-6.  **Action Execution:** Based on the triggering event (`labeled`, `edited`, `closed`):
-    *   **`labeled`:** Creates new issues in target repositories and links them as sub-issues to the parent.
-    *   **`edited`:** Updates the title and body of existing linked child issues.
-    *   **`closed`:** If `close-issues-on-parent-close` is true, closes linked child issues.
-7.  **Logging:** Outputs information about discovered repositories and actions taken.
+1. **Trigger:** The workflow is triggered by `issues` events (`labeled`, `edited`, `closed`).
+2. **Label Check:** The action checks if the triggering issue has the `required-label`.
+3. **Configuration Load:** It reads the configuration file specified by `config-path`.
+4. **Permission Check:** If `allowed` users/teams are defined, it verifies if the user who triggered the event (e.g., added the label) is authorized. If not, it optionally comments and exits.
+5. **Repository Discovery:** It finds target repositories based on the `targetRepositorySelectors`.
+6. **Action Execution:** Based on the triggering event (`labeled`, `edited`, `closed`):
+    * **`labeled`:** Creates new issues in target repositories and links them as sub-issues to the parent.
+    * **`edited`:** Updates the title and body of existing linked child issues.
+    * **`closed`:** If `close-issues-on-parent-close` is true, closes linked child issues.
+7. **Logging:** Outputs information about discovered repositories and actions taken.
 
 ## Development
 
-1.  Clone the repository.
-2.  Install dependencies: `npm install`
-3.  Build the TypeScript code: `npm run build`
-4.  Run tests: `npm test`
+1. Clone the repository.
+2. Install dependencies: `npm install`
+3. Build the TypeScript code: `npm run build`
+4. Run tests: `npm test`
 
-Use `ncc` for packaging the action: `npm run build` (this compiles the code and dependencies into `dist/index.js`).
+Use `npx @vercel/ncc` for packaging the action: `npm run build:action` (this compiles the code and all dependencies into a single file in the `dist` directory).
 
 ## License
 
