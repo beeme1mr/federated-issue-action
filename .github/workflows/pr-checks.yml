@@ -29,7 +29,7 @@ jobs:
       - name: Build action
         run: npm run build:action
       
-      - name: Check for dist/index.js changes
+      - name: Check for build artifact changes
         run: |
           if git diff --exit-code; then
             echo "✅ build artifacts are up to date"
