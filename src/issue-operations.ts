@@ -79,9 +79,7 @@ export async function linkIssueAsSubItem(
       }
     }
   `;
-  
-  console.log(`Linking issues with parent ID: ${parentNodeId} and child ID: ${childNodeId}`);
-  
+
   return await client.graphql(mutation, {
     parentId: parentNodeId,
     childId: childNodeId,

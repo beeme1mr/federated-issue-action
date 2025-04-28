@@ -35,10 +35,10 @@ async function getRepositoriesForSelector(
   switch (selector.method) {
     case 'name-pattern':
       return await discoverByNamePattern(
-        client, 
-        owner, 
-        selector.patternType,
-        selector.identifier
+        client,
+        owner,
+        selector.operator,
+        selector.pattern
       );
     case 'explicit':
       return getExplicitRepositories(owner, selector.repositories || []);
@@ -53,43 +53,43 @@ async function getRepositoriesForSelector(
 async function discoverByNamePattern(
   client: Octokit,
   owner: string,
-  patternType: 'starts-with' | 'contains' | 'ends-with',
+  operator: "starts-with" | "contains" | "ends-with",
   pattern: string
 ): Promise<Repository[]> {
   const repos: Repository[] = [];
-  
+
   // Get all repositories in the organization
   const repositories = await client.paginate(client.rest.repos.listForOrg, {
     org: owner,
     per_page: 100,
   });
-  
+
   for (const repo of repositories) {
     let isMatch = false;
-    
-    switch(patternType) {
-      case 'starts-with':
+
+    switch (operator) {
+      case "starts-with":
         isMatch = repo.name.startsWith(pattern);
         break;
-      case 'contains':
+      case "contains":
         isMatch = repo.name.includes(pattern);
         break;
-      case 'ends-with':
+      case "ends-with":
         isMatch = repo.name.endsWith(pattern);
         break;
       default:
         isMatch = repo.name.includes(pattern); // Default to 'contains'
     }
-    
+
     if (isMatch) {
       repos.push({
         owner,
         name: repo.name,
-        nodeId: repo.node_id
+        nodeId: repo.node_id,
       });
     }
   }
-  
+
   return repos;
 }
 
