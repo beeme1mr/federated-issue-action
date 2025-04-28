@@ -4,121 +4,120 @@ import { Config, configSchema } from './config';
 import { createChildIssue, getChildIssues, getIssueNodeId, linkIssueAsSubItem, updateChildIssue, updateChildIssueStatus } from './issue-operations';
 import { discoverRepositories } from './repo-discovery';
 import { IssueDetails, Repository } from './types';
+import { validatePermission } from './permissions';
 
 type Octokit = ReturnType<typeof getOctokit>;
 
-async function run(): Promise<void> {
-  try {
-    const token = core.getInput('github-token', { required: true });
-    const configPath = core.getInput('config-path') || '.github/federated-issue-action-config.json';
-    const requiredLabel = core.getInput('required-label') || 'federated';
-    const notifyMissingPermissions = core.getBooleanInput('notify-missing-permissions')
-    const closeIssuesOnParentClose = core.getBooleanInput('close-issues-on-parent-close');
+// Extracted core logic for better testability
+export async function runActionLogic(
+  octokit: Octokit,
+  actionContext: typeof context,
+  inputs: {
+    configPath: string;
+    requiredLabel: string;
+    notifyMissingPermissions: boolean;
+    closeIssuesOnParentClose: boolean;
+    childIssueTitleTemplate: string;
+    childIssueBodyTemplate: string;
+  }
+): Promise<void> {
+  const repo = actionContext.repo.repo;
+  const owner = actionContext.repo.owner;
+  const action = actionContext.payload.action as 'edited' | 'closed' | 'labeled' | 'unlabeled';
+  const issueNumber = actionContext.payload.issue?.number;
 
+  // Skip non-issue events or issues without the required label
+  if (!actionContext.payload.issue || !issueNumber) {
+    core.debug('Not an issue event, skipping');
+    return;
+  }
 
-    const octokit = getOctokit(token);
+  const issue = actionContext.payload.issue;
+  const hasParentLabel = issue.labels.some((label: { name: string }) => label.name === inputs.requiredLabel);
 
-    // Get current repo and context
-    const repo = context.repo.repo;
-    const owner = context.repo.owner;
-    const action = context.payload.action as 'edited' | 'closed' | 'labeled' | 'unlabeled';
-    const issueNumber = context.payload.issue?.number;
+  if (!hasParentLabel) {
+    core.info(`Issue does not have ${inputs.requiredLabel} label, skipping`);
+    return;
+  }
 
-    // Skip non-issue events or issues without the required label
-    if (!context.payload.issue || !issueNumber) {
-      core.debug('Not an issue event, skipping');
-      return;
+  const config = await getConfig(octokit, owner, repo, inputs.configPath, actionContext.ref);
+
+  const hasPermission = await validatePermission(
+    octokit,
+    config,
+    owner,
+    issue.user.login
+  );
+
+  if (!hasPermission) {
+    core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
+    if (inputs.notifyMissingPermissions) {
+      core.debug('Notifying user about missing permissions');
+      await addNoPermissionComment(octokit, owner, repo, issueNumber);
+    } else {
+      core.debug('Skipping notification about missing permissions');
     }
+    return;
+  }
 
-    const issue = context.payload.issue;
-    const hasParentLabel = issue.labels.some((label: { name: string }) => label.name === requiredLabel);
+  const repos = await discoverRepositories(octokit, config, owner);
 
-    if (!hasParentLabel) {
-      core.info(`Issue does not have ${requiredLabel} label, skipping`);
-      return;
-    }
+  console.log('Discovered repositories:', repos);
+  if (repos.length === 0) {
+    core.warning('No target repositories found for creating child issues');
+    return;
+  }
 
-    const config = await getConfig(octokit, owner, repo, configPath);
+  const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
+  core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
 
-    const hasPermission = await validatePermission(
-      octokit,
-      config,
-      owner,
-      issue.user.login
-    );
+  // Interpolate title and body templates (basic example, might need more robust templating)
+  const childIssueDetails = {
+    title: inputs.childIssueTitleTemplate.replace('${{ github.event.issue.title }}', issue.title),
+    body: inputs.childIssueBodyTemplate.replace('${{ github.event.issue.body }}', issue.body || ''),
+    // TODO support custom labels - core.getInput('child-issue-labels')
+    labels: [],
+  } satisfies IssueDetails;
 
-    if (!hasPermission) {
-      core.warning(`User ${issue.user.login} does not have permission to create SDK parent issues`);
-      if (notifyMissingPermissions) {
-        core.debug('Notifying user about missing permissions');
-        await addNoPermissionComment(octokit, owner, repo, issueNumber);
+  switch (action) {
+    case 'labeled':
+      await handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
+      break;
+
+    case 'edited':
+      await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
+      break;
+
+    case 'closed':
+      if (inputs.closeIssuesOnParentClose) {
+        core.debug('Closing child issues on parent issue close');
+        await handleIssueStatusChanged(octokit, parentIssueNodeId);
       } else {
-        core.debug('Skipping notification about missing permissions');
+        core.debug('Not closing child issues on parent issue close');
       }
-      return;
-    }
+      break;
 
-    const repos = await discoverRepositories(octokit, config, owner);
-
-    console.log('Discovered repositories:', repos);
-    if (repos.length === 0) {
-      core.warning('No target repositories found for creating child issues');
-      return;
-    }
-
-    const parentIssueNodeId = await getIssueNodeId(octokit, owner, repo, issueNumber);
-    core.debug(`Parent issue node ID: ${parentIssueNodeId}`);
-
-    const childIssueDetails = {
-      title: core.getInput('child-issue-title') || issue.title,
-      body: core.getInput('child-issue-body') || issue.body || '',
-      // TODO support custom labels - core.getInput('child-issue-labels')
-      labels: [],
-    } satisfies IssueDetails;
-
-    switch (action) {
-      case 'labeled':
-        handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
-        break;
-
-      case 'edited':
-        handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
-        break;
-
-      case 'closed':
-        if (closeIssuesOnParentClose) {
-          core.debug('Closing child issues on parent issue close');
-          handleIssueStatusChanged(octokit, parentIssueNodeId);
-        } else {
-          core.debug('Not closing child issues on parent issue close');
-        }
-        break;
-
-      default:
-        core.info(`Action ${action} not handled`);
-    }
-
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    core.setFailed(`Action failed: ${errorMessage}`);
+    default:
+      core.info(`Action ${action} not handled`);
   }
 }
 
 /**
  * Gets the action configuration from the repository
  */
-async function getConfig(
+export async function getConfig(
   octokit: Octokit,
   owner: string,
   repo: string,
-  configPath: string
-) {
+  configPath: string,
+  ref: string // Pass ref explicitly
+): Promise<Config> {
   try {
     const response = await octokit.rest.repos.getContent({
       owner,
       repo,
       path: configPath,
-      ref: context.ref
+      ref: ref
     });
 
     if ("content" in response.data) {
@@ -132,51 +131,6 @@ async function getConfig(
 }
 
 /**
- * Validates if a user has permission to create parent issues
- */
-async function validatePermission(
-  client: Octokit,
-  config: Config,
-  owner: string,
-  username: string
-): Promise<boolean> {
-  // Check if user owns the repo
-  if (owner === username) {
-    return true;
-  }
-
-  // Check if user is in the allowed users list
-  if (config.allowed.users.includes(username)) {
-    return true;
-  }
-
-  // Check team memberships
-  for (const team of config.allowed.teams) {
-    try {
-      // Extract team name from team slug (which might include org name)
-      const teamSlug = team.includes('/') ? team.split('/')[1] : team;
-      const teamOrg = team.includes('/') ? team.split('/')[0] : owner;
-
-      const response = await client.rest.teams.getMembershipForUserInOrg({
-        org: teamOrg,
-        team_slug: teamSlug,
-        username
-      });
-
-      // If the API doesn't throw and returns active state, user is a member
-      if (response.status === 200 && response.data.state === 'active') {
-        return true;
-      }
-    } catch (error) {
-      // Ignore errors, just continue checking other teams
-      continue;
-    }
-  }
-
-  return false;
-}
-
-/**
  * Adds a comment to an issue indicating lack of permission
  */
 async function addNoPermissionComment(
@@ -184,8 +138,8 @@ async function addNoPermissionComment(
   owner: string,
   repo: string,
   issueNumber: number
-) {
-  return await client.rest.issues.createComment({
+): Promise<void> { // Return void for consistency
+  await client.rest.issues.createComment({
     owner,
     repo,
     issue_number: issueNumber,
@@ -275,4 +229,30 @@ async function handleIssueStatusChanged(
   }
 }
 
-run();
+// Main execution wrapper
+async function run(): Promise<void> {
+  try {
+    const token = core.getInput('github-token', { required: true });
+    const inputs = {
+      configPath: core.getInput('config-path') || '.github/federated-issue-action-config.json',
+      requiredLabel: core.getInput('required-label') || 'federated',
+      notifyMissingPermissions: core.getBooleanInput('notify-missing-permissions'),
+      closeIssuesOnParentClose: core.getBooleanInput('close-issues-on-parent-close'),
+      childIssueTitleTemplate: core.getInput('child-issue-title') || '${{ github.event.issue.title }}',
+      childIssueBodyTemplate: core.getInput('child-issue-body') || '${{ github.event.issue.body }}',
+    };
+
+    const octokit = getOctokit(token);
+
+    await runActionLogic(octokit, context, inputs);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    core.setFailed(`Action failed: ${errorMessage}`);
+  }
+}
+
+// Only run if not in test environment
+if (process.env.JEST_WORKER_ID === undefined) {
+  run();
+}
