@@ -31,7 +31,7 @@ jobs:
       
       - name: Check for build artifact changes
         run: |
-            if git diff --exit-code HEAD^ HEAD; then
+            if git diff --exit-code; then
               echo "✅ build artifacts are up to date"
             else
               echo "❌ Error: build artifacts are not up to date. Please run 'npm run build' and commit the changes."
