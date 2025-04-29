@@ -106,13 +106,13 @@ export async function runActionLogic(
       break;
 
     case "edited":
-      await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
+      await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails, repos);
       break;
 
     case "closed":
       if (settings.closeIssuesOnParentClose) {
         core.debug("Closing child issues on parent issue close");
-        await handleIssueStatusChanged(octokit, parentIssueNodeId);
+        await handleIssueStatusChanged(octokit, parentIssueNodeId, repos);
       } else {
         core.debug("Not closing child issues on parent issue close");
       }
@@ -223,12 +223,18 @@ async function handleIssueOpened(
 async function handleIssueEdited(
   client: Octokit,
   parentIssueNodeId: string,
-  childIssueDetails: IssueDetails
+  childIssueDetails: IssueDetails,
+  targetRepos: Repository[]
 ): Promise<void> {
-  const childIssues = await getChildIssues(client, parentIssueNodeId);
-  core.debug(`Found ${childIssues.length} child issues`);
+  const allChildIssues = await getChildIssues(client, parentIssueNodeId);
+  core.debug(`Found ${allChildIssues.length} linked child issues`);
 
-  for (const childIssue of childIssues) {
+  // Filter child issues to only include those in target repositories
+  const targetRepoNames = new Set(targetRepos.map(repo => repo.name));
+  const childIssuesToUpdate = allChildIssues.filter(child => targetRepoNames.has(child.repo));
+  core.debug(`Found ${childIssuesToUpdate.length} child issues in target repositories`);
+
+  for (const childIssue of childIssuesToUpdate) {
     try {
       core.debug(
         `Updating child issue ${childIssue.repo}#${childIssue.number}`
@@ -252,12 +258,18 @@ async function handleIssueEdited(
  */
 async function handleIssueStatusChanged(
   client: Octokit,
-  parentIssueNodeId: string
+  parentIssueNodeId: string,
+  targetRepos: Repository[]
 ): Promise<void> {
-  const childIssues = await getChildIssues(client, parentIssueNodeId);
-  core.debug(`Found ${childIssues.length} child issues`);
+  const allChildIssues = await getChildIssues(client, parentIssueNodeId);
+  core.debug(`Found ${allChildIssues.length} linked child issues`);
 
-  for (const childIssue of childIssues) {
+  // Filter child issues to only include those in target repositories
+  const targetRepoNames = new Set(targetRepos.map(repo => repo.name));
+  const childIssuesToUpdate = allChildIssues.filter(child => targetRepoNames.has(child.repo));
+  core.debug(`Found ${childIssuesToUpdate.length} child issues in target repositories`);
+
+  for (const childIssue of childIssuesToUpdate) {
     try {
       core.debug(
         `Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`

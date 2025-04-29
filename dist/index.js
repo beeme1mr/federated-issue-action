@@ -34589,12 +34589,12 @@ async function runActionLogic(octokit, actionContext, settings) {
             await handleIssueOpened(octokit, parentIssueNodeId, childIssueDetails, repos);
             break;
         case "edited":
-            await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails);
+            await handleIssueEdited(octokit, parentIssueNodeId, childIssueDetails, repos);
             break;
         case "closed":
             if (settings.closeIssuesOnParentClose) {
                 core.debug("Closing child issues on parent issue close");
-                await handleIssueStatusChanged(octokit, parentIssueNodeId);
+                await handleIssueStatusChanged(octokit, parentIssueNodeId, repos);
             }
             else {
                 core.debug("Not closing child issues on parent issue close");
@@ -34657,10 +34657,14 @@ async function handleIssueOpened(client, parentIssueNodeId, childIssueDetails, c
 /**
  * Handles the 'edited' event by updating child issues
  */
-async function handleIssueEdited(client, parentIssueNodeId, childIssueDetails) {
-    const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
-    core.debug(`Found ${childIssues.length} child issues`);
-    for (const childIssue of childIssues) {
+async function handleIssueEdited(client, parentIssueNodeId, childIssueDetails, targetRepos) {
+    const allChildIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
+    core.debug(`Found ${allChildIssues.length} linked child issues`);
+    // Filter child issues to only include those in target repositories
+    const targetRepoNames = new Set(targetRepos.map(repo => repo.name));
+    const childIssuesToUpdate = allChildIssues.filter(child => targetRepoNames.has(child.repo));
+    core.debug(`Found ${childIssuesToUpdate.length} child issues in target repositories`);
+    for (const childIssue of childIssuesToUpdate) {
         try {
             core.debug(`Updating child issue ${childIssue.repo}#${childIssue.number}`);
             await (0, issue_operations_1.updateChildIssue)(client, childIssue, childIssueDetails);
@@ -34674,10 +34678,14 @@ async function handleIssueEdited(client, parentIssueNodeId, childIssueDetails) {
 /**
  * Handles the 'closed' or 'reopened' events by updating child issue statuses
  */
-async function handleIssueStatusChanged(client, parentIssueNodeId) {
-    const childIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
-    core.debug(`Found ${childIssues.length} child issues`);
-    for (const childIssue of childIssues) {
+async function handleIssueStatusChanged(client, parentIssueNodeId, targetRepos) {
+    const allChildIssues = await (0, issue_operations_1.getChildIssues)(client, parentIssueNodeId);
+    core.debug(`Found ${allChildIssues.length} linked child issues`);
+    // Filter child issues to only include those in target repositories
+    const targetRepoNames = new Set(targetRepos.map(repo => repo.name));
+    const childIssuesToUpdate = allChildIssues.filter(child => targetRepoNames.has(child.repo));
+    core.debug(`Found ${childIssuesToUpdate.length} child issues in target repositories`);
+    for (const childIssue of childIssuesToUpdate) {
         try {
             core.debug(`Updating status of child issue ${childIssue.repo}#${childIssue.number} to closed`);
             await (0, issue_operations_1.updateChildIssueStatus)(client, childIssue, false);

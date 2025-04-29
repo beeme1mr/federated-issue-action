@@ -27,13 +27,13 @@ jobs:
         run: npm test
       
       - name: Build action
-        run: npm run build:action
+        run: npm run build
       
       - name: Check for build artifact changes
         run: |
-          if git diff --exit-code; then
-            echo "✅ build artifacts are up to date"
-          else
-            echo "❌ Error: build artifacts are not up to date. Please run 'npm run build' and commit the changes."
-            exit 1
-          fi
+            if git diff --exit-code; then
+              echo "✅ build artifacts are up to date"
+            else
+              echo "❌ Error: build artifacts are not up to date. Please run 'npm run build' and commit the changes."
+              exit 1
+            fi
