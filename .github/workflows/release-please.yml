@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write # https://github.com/googleapis/release-please-action/issues/1105
       pull-requests: write
 
     # Release-please creates a PR that tracks all changes
