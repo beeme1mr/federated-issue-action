@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Federated Issue Management
-        uses: beemer/federated-issue-action@v1 # Replace with the correct version tag
+        uses: beeme1mr/federated-issue-action@v1 # Replace with the correct version tag
         with:
           # Required: GitHub token with necessary permissions
           github-token: ${{ secrets.YOUR_PAT_SECRET }} 
