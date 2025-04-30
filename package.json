@@ -1,6 +1,6 @@
 {
   "name": "federated-issue-action",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Synchronizes issues across multiple repositories",
   "main": "dist/index.js",
   "scripts": {
